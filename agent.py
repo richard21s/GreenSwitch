@@ -1,9 +1,9 @@
 import json
 import os
-import streamlit as st
 from openai import OpenAI
 from dotenv import load_dotenv
 from tools import TOOLS_DEFINITION, execute_tool
+
 
 api_key_rahasia = st.secrets["OPENROUTER_API_KEY"]
 client = OpenAI(
@@ -11,27 +11,27 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
 )
 
-SYSTEM_PROMPT = """Kamu adalah GreenSwitch, AI Agent yang membantu masyarakat Indonesia 
-memutuskan apakah dan kapan sebaiknya beralih dari kendaraan BBM ke kendaraan listrik (EV).
+SYSTEM_PROMPT = """Kamu adalah GreenSwitch, AI Agent cerdas tingkat lanjut.
+Tugasmu adalah menganalisis data pengguna untuk memutuskan apakah dan kapan sebaiknya mereka beralih dari kendaraan BBM ke kendaraan listrik (EV).
 
-Tugasmu:
-1. Saat pengguna mengirim profil mereka, LANGSUNG panggil semua tools yang relevan secara berurutan:
-   - hitung_biaya_bbm → hitung_biaya_ev → hitung_emisi_co2 → rekomendasi_ev → hitung_bep → get_insentif_ev
-2. Setelah semua data terkumpul, berikan analisis lengkap dalam format yang terstruktur dan mudah dipahami.
-3. Berikan rekomendasi yang JELAS: apakah sebaiknya beralih sekarang, menunggu, atau tidak perlu.
-4. Selalu gunakan Bahasa Indonesia yang ramah dan mudah dimengerti.
-5. Sertakan pertimbangan lingkungan (emisi CO₂) DAN finansial dalam rekomendasi.
-6. Untuk pertanyaan follow-up, jawab berdasarkan data yang sudah dihitung sebelumnya.
+ATURAN EKSEKUSI:
+1. Panggil tools secara berurutan: hitung_biaya_bbm → hitung_biaya_ev → hitung_emisi_co2 → rekomendasi_ev → hitung_bep → get_insentif_ev.
+2. JIKA budget pengguna sangat besar TETAPI daya listrik PLN mereka sangat kecil (misal 900 VA atau 1300 VA), sarankan MENUNDA (verdict: "wait") dan sarankan upgrade daya PLN.
+3. JIKA penghematan bulanan sangat kecil dan budget tidak cukup untuk EV, sarankan MENUNDA.
+4. JIKA penghematan besar dan budget cukup, sarankan BERALIH (verdict: "switch").
 
-Format output analisis utama:
-💰 ANALISIS BIAYA
-🌿 DAMPAK LINGKUNGAN  
-🚗 REKOMENDASI KENDARAAN LISTRIK
-📊 TITIK BALIK MODAL (BEP)
-🏛️ INSENTIF PEMERINTAH
-✅ KESIMPULAN & REKOMENDASI
+ATURAN OUTPUT (WAJIB JSON):
+Kamu WAJIB mengembalikan output HANYA dalam format JSON yang valid persis seperti struktur di bawah ini:
 
-Selalu transparan — jelaskan dasar perhitunganmu."""
+{
+    "verdict": "switch", 
+    "title": "Waktu Terbaik Beralih ke EV",
+    "narasi": "Satu paragraf ringkasan singkat (Executive Summary).",
+    "tips": [
+        {"highlight": "Pastikan", "text": "rumah Anda memiliki grounding yang baik."}
+    ],
+    "analisis_lengkap": "Di sini, tuliskan analisis komprehensifmu menggunakan format Markdown. WAJIB mencakup struktur berikut: \n\n### 💰 ANALISIS BIAYA\n...\n### 🌿 DAMPAK LINGKUNGAN\n...\n### 🚗 REKOMENDASI KENDARAAN LISTRIK\n...\n### 📊 TITIK BALIK MODAL (BEP)\n...\n### 🏛️ INSENTIF PEMERINTAH\n...\n### ✅ KESIMPULAN & REKOMENDASI\n..."
+}"""
 
 
 def run_agent(user_message: str, conversation_history: list) -> tuple[str, list]:
@@ -48,7 +48,7 @@ def run_agent(user_message: str, conversation_history: list) -> tuple[str, list]
     MAX_ITERATIONS = 10
     for i in range(MAX_ITERATIONS):
         response = client.chat.completions.create(
-            model="openrouter/free",
+            model="openrouter/free",   # hemat biaya, performa bagus
             messages=messages,
             tools=TOOLS_DEFINITION,
             tool_choice="auto",
@@ -69,13 +69,17 @@ def run_agent(user_message: str, conversation_history: list) -> tuple[str, list]
         for tc in msg.tool_calls:
             tool_name   = tc.function.name
             tool_args   = json.loads(tc.function.arguments)
+
+            if status_callback:
+                status_callback(tool_name, tool_args)
+
             tool_result = execute_tool(tool_name, tool_args)
 
             tool_results.append({
                 "tool_call_id": tc.id,
                 "role":         "tool",
                 "name":         tool_name,
-                "content":      tool_result,
+                "content":      str(tool_result),
             })
 
         messages.extend(tool_results)
@@ -89,7 +93,8 @@ def build_initial_prompt(data: dict) -> str:
     return f"""Tolong analisis profil saya dan berikan rekomendasi lengkap apakah saya sebaiknya beralih ke kendaraan listrik:
 
 **Profil Kendaraan & Kebiasaan:**
-- Jenis kendaraan: {data['jenis_kendaraan']}
+- Kendaraan BBM saat ini: {data['jenis_kendaraan_saat_ini']}
+- Kategori EV yang ingin dibeli: {data['kategori_ev_diincar']}
 - BBM yang digunakan: {data['jenis_bbm']}
 - Jarak tempuh harian: {data['jarak_harian_km']} km
 - Kota: {data.get('kota', 'Indonesia')}
@@ -99,4 +104,5 @@ def build_initial_prompt(data: dict) -> str:
 - Harga jual kendaraan lama (Trade-in): Rp {data['trade_in_rp']:,.0f}
 - Budget maksimal untuk beli EV: Rp {data['budget_rp']:,.0f}
 
+AI Agent harus memanggil fungsi `hitung_biaya_bbm` dengan parameter kendaraan saat ini, dan memanggil fungsi `hitung_biaya_ev` serta `rekomendasi_ev` menggunakan parameter kategori EV yang diincar.
 Berikan analisis lengkap dengan memanggil semua tools yang relevan, lalu berikan rekomendasi yang jelas."""
