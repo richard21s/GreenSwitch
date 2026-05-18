@@ -448,9 +448,11 @@ if st.session_state.analysis_done:
         if msg["role"] == "user":
             st.markdown(f'<div class="chat-user-msg">{msg["content"]}</div>', unsafe_allow_html=True)
         elif msg["role"] == "assistant":
-            # Jangan tampilkan raw JSON di chat box jika itu JSON
-            if "{" not in msg["content"][:5]: 
-                st.markdown(f'<div class="chat-agent-msg">{msg["content"]}</div>', unsafe_allow_html=True)
+            # 👇 PERBAIKAN: Cek dulu apakah content ada (bukan None) dan tipenya string 👇
+            if msg.get("content") is not None and isinstance(msg["content"], str):
+                # Jangan tampilkan raw JSON di chat box jika itu format keputusan awal
+                if "{" not in msg["content"][:5]: 
+                    st.markdown(f'<div class="chat-agent-msg">{msg["content"]}</div>', unsafe_allow_html=True)
 
     with st.form("chat_form", clear_on_submit=True):
         col_input, col_btn = st.columns([5, 1])
