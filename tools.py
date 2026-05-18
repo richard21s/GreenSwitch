@@ -72,7 +72,7 @@ def hitung_emisi_co2(jenis_kendaraan_lama: str, kategori_ev_new: str, jarak_hari
     konsumsi_ev  = KONSUMSI_EV.get(kategori_ev_new) # Menggunakan konsumsi energi EV baru
 
     if not konsumsi_bbm or not konsumsi_ev:
-        return {"error": "Data kendaraan tidak ditemukan"}
+        return {"error": f"Data kendaraan tidak ditemukan untuk {jenis_kendaraan_lama} atau {kategori_ev_new}"}
 
     jarak_tahunan = jarak_harian_km * 365
     liter_per_tahun = (jarak_tahunan / 100) * konsumsi_bbm
@@ -86,7 +86,7 @@ def hitung_emisi_co2(jenis_kendaraan_lama: str, kategori_ev_new: str, jarak_hari
 
     return {
         "jarak_tahunan_km":      jarak_tahunan,
-        "emisi_bbm_network_kg":  round(emisi_bbm_kg, 1),
+        "emisi_bbm_kg_per_tahun":  round(emisi_bbm_kg, 1),
         "emisi_ev_kg_per_tahun":   round(emisi_ev_kg, 1),
         "pengurangan_kg_per_tahun": round(pengurangan_kg, 1),
         "pengurangan_ton_per_tahun": round(pengurangan_kg / 1000, 2),
@@ -262,19 +262,25 @@ TOOLS_DEFINITION = [
         "type": "function",
         "function": {
             "name": "hitung_emisi_co2",
-            "description": "Membandingkan emisi karbon CO₂ antara menggunakan kendaraan BBM vs kendaraan listrik.",
+            "description": "Membandingkan emisi karbon CO₂ tahunan antara kendaraan BBM lama dengan EV baru.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "jenis_kendaraan": {
+                    "jenis_kendaraan_lama": {
                         "type": "string",
-                        "enum": ["Motor", "Mobil City Car", "Mobil Sedan/MPV", "SUV"]
+                        "enum": ["Motor", "Mobil City Car", "Mobil Sedan/MPV", "SUV"],
+                        "description": "Kendaraan bensin lama saat ini"
+                    },
+                    "kategori_ev_new": {
+                        "type": "string",
+                        "enum": ["Motor", "Mobil City Car", "Mobil Sedan/MPV", "SUV"],
+                        "description": "Kategori kendaraan listrik yang diincar"
                     },
                     "jarak_harian_km": {"type": "number"},
-                    "jenis_bbm":       {"type": "string"},
-                    "golongan_pln":    {"type": "string"}
+                    "jenis_bbm": {"type": "string"},
+                    "golongan_pln": {"type": "string"}
                 },
-                "required": ["jenis_kendaraan", "jarak_harian_km", "jenis_bbm", "golongan_pln"]
+                "required": ["jenis_kendaraan_lama", "kategori_ev_new", "jarak_harian_km", "jenis_bbm", "golongan_pln"]
             }
         }
     },
