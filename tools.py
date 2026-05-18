@@ -1,5 +1,5 @@
-# tools.py — Fungsi kalkulasi yang dipanggil AI Agent
 import json
+from duckduckgo_search import DDGS
 from data import (
     HARGA_BBM, KONSUMSI_BBM, TARIF_PLN, KONSUMSI_EV,
     EMISI_BBM_PER_LITER, EMISI_PLN_PER_KWH,
@@ -65,36 +65,33 @@ def hitung_biaya_ev(jenis_kendaraan: str, jarak_harian_km: float, golongan_pln: 
 # ─────────────────────────────────────────────
 # TOOL 3: Hitung emisi CO₂ perbandingan
 # ─────────────────────────────────────────────
-def hitung_emisi_co2(jenis_kendaraan: str, jarak_harian_km: float,
+def hitung_emisi_co2(jenis_kendaraan_lama: str, kategori_ev_new: str, jarak_harian_km: float,
                      jenis_bbm: str, golongan_pln: str) -> dict:
-    """Membandingkan emisi CO₂ antara kendaraan BBM dan EV."""
-    konsumsi_bbm = KONSUMSI_BBM.get(jenis_kendaraan)
-    konsumsi_ev  = KONSUMSI_EV.get(jenis_kendaraan)
+    """Membandingkan emisi CO₂ antara kendaraan BBM lama dan kategori EV baru."""
+    konsumsi_bbm = KONSUMSI_BBM.get(jenis_kendaraan_lama)
+    konsumsi_ev  = KONSUMSI_EV.get(kategori_ev_new) # Menggunakan konsumsi energi EV baru
 
     if not konsumsi_bbm or not konsumsi_ev:
         return {"error": "Data kendaraan tidak ditemukan"}
 
     jarak_tahunan = jarak_harian_km * 365
-
-    # Emisi BBM
     liter_per_tahun = (jarak_tahunan / 100) * konsumsi_bbm
     emisi_bbm_kg    = liter_per_tahun * EMISI_BBM_PER_LITER
 
-    # Emisi EV (dari grid PLN)
     kwh_per_tahun   = jarak_tahunan * konsumsi_ev
     emisi_ev_kg     = kwh_per_tahun * EMISI_PLN_PER_KWH
 
     pengurangan_kg  = emisi_bbm_kg - emisi_ev_kg
-    persen_hemat    = (pengurangan_kg / emisi_bbm_kg) * 100
+    persen_hemat    = (pengurangan_kg / emisi_bbm_kg) * 100 if emisi_bbm_kg > 0 else 0
 
     return {
         "jarak_tahunan_km":      jarak_tahunan,
-        "emisi_bbm_kg_per_tahun":  round(emisi_bbm_kg, 1),
+        "emisi_bbm_network_kg":  round(emisi_bbm_kg, 1),
         "emisi_ev_kg_per_tahun":   round(emisi_ev_kg, 1),
         "pengurangan_kg_per_tahun": round(pengurangan_kg, 1),
         "pengurangan_ton_per_tahun": round(pengurangan_kg / 1000, 2),
         "persen_pengurangan":    round(persen_hemat, 1),
-        "setara_pohon_ditanam":  round(pengurangan_kg / 21),  # 1 pohon ~21 kg CO₂/tahun
+        "setara_pohon_ditanam":  round(pengurangan_kg / 21),
     }
 
 
@@ -195,6 +192,16 @@ def get_insentif_ev() -> dict:
     """Mengembalikan daftar insentif pemerintah untuk kendaraan listrik di Indonesia."""
     return {"insentif": INSENTIF_EV}
 
+# ─────────────────────────────────────────────
+# TOOL 7: Pencarian Web Otonom (Real-time Internet Access)
+# ─────────────────────────────────────────────
+def cari_info_web(query: str) -> dict:
+    """Mencari informasi real-time di internet untuk berita EV, tren BBM, dll."""
+    try:
+        results = DDGS().text(query, region='id-id', max_results=3)
+        return {"hasil_pencarian": results}
+    except Exception as e:
+        return {"error": f"Gagal mencari di internet: {str(e)}"}
 
 # ─────────────────────────────────────────────
 # DEFINISI TOOLS untuk OpenAI Function Calling
@@ -319,6 +326,23 @@ TOOLS_DEFINITION = [
             "parameters": {"type": "object", "properties": {}}
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "cari_info_web",
+            "description": "Gunakan alat ini HANYA JIKA pengguna menanyakan berita terbaru, harga terkini yang tidak ada di database, atau tren masa depan tentang EV dan energi.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Kata kunci pencarian, contoh: 'Harga BBM Pertamina terbaru hari ini' atau 'Spesifikasi Wuling Binguo EV'"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    }
 ]
 
 # ─── Dispatcher: panggil fungsi berdasarkan nama ──────────────────────
@@ -331,6 +355,7 @@ def execute_tool(tool_name: str, tool_args: dict) -> str:
         "rekomendasi_ev":    rekomendasi_ev,
         "hitung_bep":        hitung_bep,
         "get_insentif_ev":   get_insentif_ev,
+        "cari_info_web":     cari_info_web,
     }
     fn = fn_map.get(tool_name)
     if fn:
