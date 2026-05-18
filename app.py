@@ -1,12 +1,11 @@
-# app.py — EnergiCerdas UI (Streamlit)
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 import json
 from agent import run_agent, build_initial_prompt
-from data import HARGA_BBM, KONSUMSI_BBM, TARIF_PLN
 from tools import hitung_biaya_bbm, hitung_biaya_ev, hitung_emisi_co2
+# Pastikan Anda mengimpor data jika dibutuhkan, atau tools sudah mengelolanya
 
 # ─── Konfigurasi halaman ──────────────────────────────────────────────
 st.set_page_config(
@@ -16,285 +15,402 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ─── CSS kustom ───────────────────────────────────────────────────────
+# ─── CSS KUSTOM (Meniru Tailwind dari React) ──────────────────────────
 st.markdown("""
 <style>
-    .main-header {
-        background: linear-gradient(135deg, #0f4c35 0%, #1a7a56 50%, #0d3d5c 100%);
-        padding: 2rem;
-        border-radius: 12px;
-        margin-bottom: 1.5rem;
-        text-align: center;
-        color: white;
+    /* Global Background & Fonts */
+    .stApp {
+        background: radial-gradient(ellipse at top right, #ecfdf5 0%, #f0fdf4 50%, #f0f9ff 100%);
+        color: #1f2937;
     }
-    .main-header h1 { font-size: 2.2rem; margin: 0; }
-    .main-header p  { opacity: 0.85; margin: 0.5rem 0 0; }
-    .metric-card {
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        padding: 1rem 1.2rem;
-        text-align: center;
+    
+    /* Navbar Styling */
+    .modern-navbar {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        padding: 1rem 2rem;
+        border-radius: 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     }
-    .metric-card h3 { font-size: 1.5rem; margin: 0; color: #1a7a56; }
-    .metric-card p  { font-size: 0.8rem; color: #64748b; margin: 0.25rem 0 0; }
-    .chat-user { background: #e8f5e9; border-radius: 10px; padding: 0.8rem 1rem; margin: 0.5rem 0; }
-    .chat-agent { background: #f1f5f9; border-radius: 10px; padding: 0.8rem 1rem; margin: 0.5rem 0; border-left: 3px solid #1a7a56; }
-    .step-badge {
-        display: inline-block;
-        background: #1a7a56;
-        color: white;
+    .navbar-brand {
+        font-size: 1.8rem;
+        font-weight: 900;
+        background: -webkit-linear-gradient(right, #064e3b, #065f46);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin: 0;
+    }
+    .navbar-badge {
+        background: linear-gradient(to right, #d1fae5, #a7f3d0);
+        color: #065f46;
+        padding: 0.5rem 1rem;
+        border-radius: 999px;
         font-size: 0.75rem;
-        padding: 2px 10px;
-        border-radius: 20px;
-        margin-bottom: 0.5rem;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        border: 1px solid rgba(16, 185, 129, 0.2);
     }
-    .warning-box {
-        background: #fff8e1;
-        border: 1px solid #ffc107;
-        border-radius: 8px;
-        padding: 0.8rem 1rem;
-        font-size: 0.9rem;
+
+    /* Core Metrics Cards */
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
     }
+    .modern-metric {
+        background: #ffffff;
+        padding: 1.5rem;
+        border-radius: 24px;
+        border: 1px solid #f1f5f9;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .modern-metric:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+    .modern-metric-dark {
+        background: #111827;
+        color: white;
+        border: 1px solid #1f2937;
+    }
+    .metric-label { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 0.25rem; }
+    .metric-val { font-size: 1.75rem; font-weight: 900; margin: 0; }
+    
+    /* Narrative Box (AI Verdict) */
+    .narrative-box {
+        padding: 2rem;
+        border-radius: 2rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
+        position: relative;
+        overflow: hidden;
+    }
+    .narrative-switch {
+        background: linear-gradient(to bottom right, #f0fdf4, #ecfdf5);
+        border: 1px solid #d1fae5;
+    }
+    .narrative-switch h3 { color: #022c22; font-size: 1.8rem; font-weight: 900; margin-bottom: 0.5rem; }
+    .narrative-switch p { color: #065f46; font-size: 1.1rem; line-height: 1.6; font-weight: 500; }
+    
+    .narrative-wait {
+        background: linear-gradient(to bottom right, #fffbeb, #fefce8);
+        border: 1px solid #fef3c7;
+    }
+    .narrative-wait h3 { color: #451a03; font-size: 1.8rem; font-weight: 900; margin-bottom: 0.5rem; }
+    .narrative-wait p { color: #92400e; font-size: 1.1rem; line-height: 1.6; font-weight: 500; }
+
+    /* Component Boxes */
+    .content-box {
+        background: white;
+        padding: 1.8rem;
+        border-radius: 2rem;
+        border: 1px solid #f1f5f9;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+        height: 100%;
+    }
+    .box-title {
+        font-size: 1.25rem;
+        font-weight: 800;
+        color: #111827;
+        margin-bottom: 1.2rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    /* Tips List */
+    .tip-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+    .tip-number {
+        background: #fffbeb;
+        color: #d97706;
+        width: 28px; height: 28px;
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: bold; font-size: 0.85rem; flex-shrink: 0;
+        border: 1px solid #fef3c7;
+    }
+    .tip-text { font-size: 0.95rem; color: #374151; font-weight: 500; line-height: 1.5; margin: 0; }
+    .tip-highlight { font-weight: 800; color: #b45309; margin-right: 0.3rem; }
+
+    /* EV Card */
+    .ev-card {
+        padding: 1.2rem;
+        border-radius: 1.5rem;
+        border: 1px solid #f1f5f9;
+        margin-bottom: 1rem;
+        transition: background 0.2s;
+    }
+    .ev-card:hover { background: #ecfdf5; border-color: #d1fae5; }
+    .ev-price { background: #ecfdf5; padding: 0.3rem 0.8rem; border-radius: 0.8rem; border: 1px solid #d1fae5; font-weight: 900; color: #065f46; font-size: 0.9rem;}
+
+    /* Subsidy Box */
+    .subsidy-box {
+        background: linear-gradient(to bottom right, #111827, #1f2937);
+        padding: 1.8rem;
+        border-radius: 2rem;
+        color: white;
+        position: relative;
+        overflow: hidden;
+    }
+    .subsidy-title { font-size: 0.85rem; font-weight: 800; letter-spacing: 0.1em; color: #34d399; text-transform: uppercase; margin-bottom: 1rem; }
+    .subsidy-item { font-size: 0.9rem; color: #d1d5db; margin-bottom: 0.8rem; font-weight: 500; display: flex; gap: 0.5rem;}
+    
+    /* Chat Box Modern */
+    .chat-user-msg { background: #111827; color: white; padding: 1rem 1.2rem; border-radius: 1.2rem 1.2rem 0.2rem 1.2rem; max-width: 85%; margin-left: auto; margin-bottom: 1rem; font-weight: 500; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+    .chat-agent-msg { background: white; border: 1px solid #e5e7eb; color: #1f2937; padding: 1rem 1.2rem; border-radius: 1.2rem 1.2rem 1.2rem 0.2rem; max-width: 85%; margin-right: auto; margin-bottom: 1rem; font-weight: 500; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); }
 </style>
 """, unsafe_allow_html=True)
 
 # ─── Session state ────────────────────────────────────────────────────
-if "conversation" not in st.session_state:
-    st.session_state.conversation = []
-if "analysis_done" not in st.session_state:
-    st.session_state.analysis_done = False
-if "user_data" not in st.session_state:
-    st.session_state.user_data = {}
-if "chart_data" not in st.session_state:
-    st.session_state.chart_data = {}
+if "conversation" not in st.session_state: st.session_state.conversation = []
+if "analysis_done" not in st.session_state: st.session_state.analysis_done = False
+if "user_data" not in st.session_state: st.session_state.user_data = {}
+if "chart_data" not in st.session_state: st.session_state.chart_data = {}
+if "parsed_result" not in st.session_state: st.session_state.parsed_result = None
 
 # ─── HEADER ──────────────────────────────────────────────────────────
 st.markdown("""
-<div class="main-header">
-    <h1>⚡ EnergiCerdas</h1>
-    <p>AI Agent untuk Transisi Kendaraan BBM → Listrik | TechnoFest 2026 · Tim RDR</p>
+<div class="modern-navbar">
+    <h1 class="navbar-brand">⚡ GreenSwitch</h1>
+    <div class="navbar-badge">Tim RDR · TechnoFest 2026</div>
 </div>
 """, unsafe_allow_html=True)
 
-# ─── SIDEBAR: Form Input ─────────────────────────────────────────────
+# ─── SIDEBAR ─────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### 📋 Profil Kamu")
-    st.markdown('<span class="step-badge">LANGKAH 1 — Isi Data</span>', unsafe_allow_html=True)
-
-    jenis_kendaraan = st.selectbox(
-        "Jenis Kendaraan",
-        ["Motor", "Mobil City Car", "Mobil Sedan/MPV", "SUV"],
-        help="Pilih jenis kendaraan BBM yang kamu gunakan saat ini"
-    )
-
-    jenis_bbm = st.selectbox(
-        "BBM yang Digunakan",
-        ["Pertalite", "Pertamax", "Pertamax Turbo"]
-    )
-
-    jarak_harian = st.slider(
-        "Jarak Tempuh Harian (km)",
-        min_value=5, max_value=150, value=30, step=5
-    )
-
-    golongan_pln = st.selectbox(
-        "Golongan Listrik PLN",
-        ["R-1 / 900 VA", "R-1 / 1300 VA", "R-1 / 2200 VA",
-         "R-2 / 3500-5500 VA", "R-3 / 6600 VA+"],
-        index=1
-    )
-
-    kota = st.text_input("Kota Domisili", value="Jakarta")
-
+    st.markdown("### 📋 Profil & Parameter")
+    
+    jenis_kendaraan_saat_ini = st.selectbox("Kendaraan BBM Saat Ini", ["Motor", "Mobil City Car", "Mobil Sedan/MPV", "SUV"])
+    kategori_ev_diincar = st.selectbox("Kategori EV yang Diinginkan", ["Motor", "Mobil City Car", "Mobil Sedan/MPV", "SUV"], index=1)
+    jenis_bbm = st.selectbox("BBM yang Digunakan", ["Pertalite", "Pertamax", "Pertamax Turbo"])
+    jarak_harian = st.slider("Jarak Tempuh Harian (km)", 5, 150, 30, 5)
+    golongan_pln = st.selectbox("Daya Listrik Rumah PLN", ["R-1 / 900 VA", "R-1 / 1300 VA", "R-1 / 2200 VA", "R-2 / 3500-5500 VA", "R-3 / 6600 VA+"], index=1)
+    
     st.markdown("---")
-    st.markdown("💰 **Budget Beli EV**")
-    budget_juta = st.number_input(
-        "Budget (juta Rupiah)",
-        min_value=20, max_value=2000, value=300, step=10
-    )
+    budget_juta = st.number_input("Budget Beli EV (Juta Rp)", min_value=10, max_value=2000, value=300, step=10)
     budget_rp = budget_juta * 1_000_000
-
-    st.markdown(f"**Rp {budget_rp:,.0f}**")
-
-    st.markdown("---")
-    st.markdown("💰 **Nilai Jual Kendaraan Lama (Trade-in)**")
-    trade_in_juta = st.number_input(
-        "Perkiraan harga jual kendaraan BBM kamu saat ini (Juta Rp). Isi 0 jika tidak dijual.",
-        min_value=0, max_value=1000, value=15, step=1
-    )
+    
+    trade_in_juta = st.number_input("Nilai Jual Kendaraan Lama (Juta Rp)", min_value=0, max_value=1000, value=15, step=1)
     trade_in_rp = trade_in_juta * 1_000_000
-    analyze_btn = st.button("🔍 Analisis Sekarang!", type="primary", use_container_width=True)
-
+    
+    analyze_btn = st.button("🔍 Analisis dengan Agent", type="primary", use_container_width=True)
     if st.button("🔄 Reset", use_container_width=True):
-        st.session_state.conversation  = []
-        st.session_state.analysis_done = False
-        st.session_state.user_data     = {}
-        st.session_state.chart_data    = {}
+        for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
 
-# ─── QUICK PREVIEW (live sebelum analisis) ───────────────────────────
+# ─── PREVIEW (Sebelum Analisis) ───────────────────────────────────────
 if not st.session_state.analysis_done:
-    st.markdown("#### 📊 Preview Cepat")
-    bbm_data = hitung_biaya_bbm(jenis_kendaraan, jarak_harian, jenis_bbm)
-    ev_data  = hitung_biaya_ev(jenis_kendaraan, jarak_harian, golongan_pln)
-    co2_data = hitung_emisi_co2(jenis_kendaraan, jarak_harian, jenis_bbm, golongan_pln)
+    bbm_data = hitung_biaya_bbm(jenis_kendaraan_saat_ini, jarak_harian, jenis_bbm)
+    ev_data  = hitung_biaya_ev(kategori_ev_diincar, jarak_harian, golongan_pln)
+    co2_data = hitung_emisi_co2(jenis_kendaraan_saat_ini, kategori_ev_diincar, jarak_harian, jenis_bbm, golongan_pln)
 
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.markdown(f"""<div class="metric-card">
-            <h3>Rp {bbm_data['biaya_bulanan_rp']:,}</h3>
-            <p>Biaya BBM / bulan</p></div>""", unsafe_allow_html=True)
-    with col2:
-        st.markdown(f"""<div class="metric-card">
-            <h3>Rp {ev_data['biaya_bulanan_rp']:,}</h3>
-            <p>Estimasi listrik EV / bulan</p></div>""", unsafe_allow_html=True)
-    with col3:
-        selisih = bbm_data['biaya_bulanan_rp'] - ev_data['biaya_bulanan_rp']
-        color = "#1a7a56" if selisih > 0 else "#dc2626"
-        st.markdown(f"""<div class="metric-card">
-            <h3 style="color:{color}">Rp {abs(selisih):,}</h3>
-            <p>{'Potensi hemat' if selisih > 0 else 'Lebih mahal'} / bulan</p></div>""",
-            unsafe_allow_html=True)
-    with col4:
-        st.markdown(f"""<div class="metric-card">
-            <h3>{co2_data['pengurangan_ton_per_tahun']} ton</h3>
-            <p>Potensi hemat CO₂ / tahun</p></div>""", unsafe_allow_html=True)
-
-    # Simpan untuk chart
-    st.session_state.chart_data = {
-        "bbm_data": bbm_data,
-        "ev_data":  ev_data,
-        "co2_data": co2_data,
-    }
-
-    st.markdown("---")
-    st.markdown("""<div class="warning-box">
-        👆 Klik <b>Analisis Sekarang!</b> di sidebar untuk mendapat rekomendasi lengkap dari AI Agent.
-    </div>""", unsafe_allow_html=True)
-
-# ─── GRAFIK PERBANDINGAN ──────────────────────────────────────────────
-def render_charts(bbm_monthly, ev_monthly, harga_ev, co2_data):
-    st.markdown("#### 📈 Visualisasi Perbandingan")
-    tab1, tab2 = st.tabs(["💰 Biaya Kumulatif", "🌿 Emisi CO₂"])
-
-    with tab1:
-        bulan = list(range(0, 61))
-        kumulatif_bbm = [m * bbm_monthly for m in bulan]
-        kumulatif_ev  = [harga_ev + m * ev_monthly for m in bulan]
-
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=bulan, y=kumulatif_bbm, name="BBM (tanpa beli baru)",
-                                 line=dict(color="#ef4444", width=2.5)))
-        fig.add_trace(go.Scatter(x=bulan, y=kumulatif_ev, name="EV (termasuk harga beli)",
-                                 line=dict(color="#1a7a56", width=2.5)))
-
-        # BEP
-        bep_idx = next((i for i in bulan if kumulatif_ev[i] <= kumulatif_bbm[i]), None)
-        if bep_idx:
-            fig.add_vline(x=bep_idx, line_dash="dash", line_color="#f59e0b",
-                          annotation_text=f"BEP: Bulan ke-{bep_idx}")
-
-        fig.update_layout(
-            title="Perbandingan Biaya Kumulatif 5 Tahun",
-            xaxis_title="Bulan", yaxis_title="Total Biaya (Rp)",
-            hovermode="x unified", height=350,
-            yaxis=dict(tickformat=",.0f"),
-            plot_bgcolor="white", paper_bgcolor="white",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    with tab2:
-        categories = ["Kendaraan BBM", "Kendaraan Listrik (EV)"]
-        values     = [co2_data["emisi_bbm_kg_per_tahun"], co2_data["emisi_ev_kg_per_tahun"]]
-        colors     = ["#ef4444", "#1a7a56"]
-
-        fig2 = go.Figure(go.Bar(
-            x=categories, y=values, marker_color=colors,
-            text=[f"{v:,.0f} kg" for v in values], textposition="outside"
-        ))
-        fig2.update_layout(
-            title=f"Emisi CO₂ per Tahun — Hemat {co2_data['pengurangan_ton_per_tahun']} ton/tahun "
-                  f"(≈ {co2_data['setara_pohon_ditanam']} pohon)",
-            yaxis_title="kg CO₂ per Tahun", height=350,
-            plot_bgcolor="white", paper_bgcolor="white",
-        )
-        st.plotly_chart(fig2, use_container_width=True)
+    st.markdown(f"""
+    <div style="background: white; padding: 2.5rem; border-radius: 2rem; border: 1px solid #f1f5f9; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.05); text-align: center; max-width: 800px; margin: 0 auto;">
+        <h2 style="font-size: 2.5rem; font-weight: 900; color: #111827; margin-bottom: 1rem; line-height: 1.2;">Transisi ke EV dengan <span style="background: linear-gradient(to right, #059669, #14b8a6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Data & Fakta.</span></h2>
+        <p style="color: #6b7280; font-size: 1.1rem; font-weight: 500; margin-bottom: 2rem;">Berdasarkan mobilitas Anda, estimasi biaya BBM saat ini mencapai <strong>Rp {bbm_data['biaya_bulanan_rp']:,}/bulan</strong>. Klik "Analisis" di sidebar untuk melihat proyeksi finansial cerdas dari GreenSwitch Agent.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.session_state.chart_data = { "bbm_data": bbm_data, "ev_data": ev_data, "co2_data": co2_data }
 
 # ─── EKSEKUSI ANALISIS ────────────────────────────────────────────────
 if analyze_btn:
     st.session_state.user_data = {
-        "jenis_kendaraan": jenis_kendaraan,
-        "jenis_bbm":       jenis_bbm,
-        "jarak_harian_km": jarak_harian,
-        "golongan_pln":    golongan_pln,
-        "kota":            kota,
-        "budget_rp":       budget_rp,
-        "trade_in_rp":     trade_in_rp,
+        "jenis_kendaraan_saat_ini": jenis_kendaraan_saat_ini,
+        "kategori_ev_diincar": kategori_ev_diincar,
+        "jenis_bbm": jenis_bbm, "jarak_harian_km": jarak_harian,
+        "golongan_pln": golongan_pln, "budget_rp": budget_rp, "trade_in_rp": trade_in_rp,
     }
-    st.session_state.conversation  = []
+    st.session_state.conversation = []
     st.session_state.analysis_done = False
-
+    
     prompt = build_initial_prompt(st.session_state.user_data)
+    
+    def update_thinking(tname, targs):
+        st.write(f"⚙️ Memanggil tool: {tname}...")
 
-    with st.spinner("🤖 Agent sedang menganalisis profil kamu..."):
+    with st.status("🤖 Agent GreenSwitch sedang berpikir...", expanded=True) as status:
         try:
-            response, history = run_agent(prompt, [])
-            st.session_state.conversation  = history
+            response, history = run_agent(prompt, [], status_callback=update_thinking)
+            status.update(label="✅ Analisis Selesai dan Data Siap!", state="complete", expanded=False)
+            
+            st.session_state.conversation = history
+            
+            # Coba parsing JSON dari response AI
+            try:
+                # Membersihkan markdown ```json jika ada
+                clean_json = response.replace("```json", "").replace("```", "").strip()
+                st.session_state.parsed_result = json.loads(clean_json)
+            except:
+                st.session_state.parsed_result = None # Fallback jika AI tidak membalas JSON
+                
             st.session_state.analysis_done = True
         except Exception as e:
-            st.error(f"Terjadi kesalahan: {str(e)}\n\nPastikan API key OpenAI sudah diset dengan benar di file .env")
+            status.update(label="❌ Terjadi Kesalahan Eksekusi", state="error")
+            st.error(str(e))
 
-# ─── TAMPILKAN HASIL ANALISIS ─────────────────────────────────────────
+# ─── RESULT DASHBOARD ─────────────────────────────────────────────────
 if st.session_state.analysis_done:
-    # Render charts terlebih dahulu
-    if st.session_state.chart_data:
-        d = st.session_state.chart_data
-        render_charts(
-            d["bbm_data"]["biaya_bulanan_rp"],
-            d["ev_data"]["biaya_bulanan_rp"],
-            budget_rp,
-            d["co2_data"],
+    d = st.session_state.chart_data
+    biaya_bbm = d["bbm_data"]["biaya_bulanan_rp"]
+    biaya_ev = d["ev_data"]["biaya_bulanan_rp"]
+    selisih = biaya_bbm - biaya_ev
+    co2_kg = d["co2_data"]["emisi_bbm_kg_per_tahun"] if "emisi_bbm_kg_per_tahun" in d["co2_data"] else d["co2_data"].get("emisi_bbm_network_kg", 0) # menyesuaikan key lama/baru
+    
+    # 1. AI NARRATIVE BOX
+    if st.session_state.parsed_result:
+        res = st.session_state.parsed_result
+        verdict_class = "narrative-switch" if res.get("verdict", "").lower() == "switch" else "narrative-wait"
+        icon = "✨" if res.get("verdict", "").lower() == "switch" else "⚠️"
+        
+        st.markdown(f"""
+        <div class="narrative-box {verdict_class}">
+            <div style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.7; margin-bottom: 0.5rem;">Keputusan Agent</div>
+            <h3>{icon} {res.get('title', 'Analisis Selesai')}</h3>
+            <p>{res.get('narasi', '')}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        # Fallback jika AI membalas teks biasa
+        st.info("Agent mengembalikan format teks. Berikut adalah analisisnya:")
+        st.markdown(st.session_state.conversation[-1]["content"])
+
+    # 2. CORE METRICS
+    st.markdown(f"""
+    <div class="metric-grid">
+        <div class="modern-metric">
+            <div class="metric-label">BBM / Bulan</div>
+            <div class="metric-val" style="color: #111827;">Rp {biaya_bbm:,}</div>
+        </div>
+        <div class="modern-metric">
+            <div class="metric-label">Listrik EV / Bulan</div>
+            <div class="metric-val" style="color: #059669;">Rp {biaya_ev:,}</div>
+        </div>
+        <div class="modern-metric" style="background: {'#f0fdf4' if selisih > 0 else '#fef2f2'}; border-color: {'#d1fae5' if selisih > 0 else '#fee2e2'};">
+            <div class="metric-label" style="color: {'#065f46' if selisih > 0 else '#991b1b'}">Penghematan</div>
+            <div class="metric-val" style="color: {'#059669' if selisih > 0 else '#dc2626'};">Rp {abs(selisih):,}</div>
+        </div>
+        <div class="modern-metric modern-metric-dark">
+            <div class="metric-label" style="color: #9ca3af;">Reduksi CO2 / Tahun</div>
+            <div class="metric-val">{co2_kg:,.0f} <span style="font-size: 1rem; color: #6b7280;">Kg</span></div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 3. SPLIT LAYOUT (3:2)
+    col_left, col_right = st.columns([1.5, 1])
+    
+    with col_left:
+        # CHART Area
+        st.markdown('<div class="content-box"><div class="box-title">📈 Proyeksi Kumulatif 5 Tahun</div>', unsafe_allow_html=True)
+        bulan = list(range(0, 61))
+        kum_bbm = [m * biaya_bbm for m in bulan]
+        kum_ev  = [budget_rp - trade_in_rp + (m * biaya_ev) for m in bulan]
+        
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=bulan, y=kum_bbm, fill='tozeroy', name="BBM", line=dict(color="#ef4444", width=3), fillcolor="rgba(239, 68, 68, 0.1)"))
+        fig.add_trace(go.Scatter(x=bulan, y=kum_ev, fill='tozeroy', name="EV + Investasi", line=dict(color="#10b981", width=3), fillcolor="rgba(16, 185, 129, 0.1)"))
+        fig.update_layout(
+            margin=dict(l=0, r=0, t=10, b=0), height=300,
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="#f1f5f9"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # TIPS KHUSUS
+        if st.session_state.parsed_result and "tips" in st.session_state.parsed_result:
+            st.markdown('<div style="margin-top: 1.5rem;" class="content-box"><div class="box-title">💡 Tips Khusus untuk Anda</div>', unsafe_allow_html=True)
+            for i, tip in enumerate(st.session_state.parsed_result["tips"]):
+                st.markdown(f"""
+                <div class="tip-item">
+                    <div class="tip-number">{i+1}</div>
+                    <p class="tip-text"><span class="tip-highlight">{tip.get('highlight', '')}</span> {tip.get('text', '')}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("#### 🤖 Analisis & Rekomendasi dari EnergiCerdas Agent")
+    with col_right:
+        # SUBSIDY BOX
+        st.markdown("""
+        <div class="subsidy-box">
+            <div class="subsidy-title">🏛️ Insentif Pemerintah</div>
+            <div class="subsidy-item"><span>✓</span> Potongan PPN dari 11% menjadi 1%</div>
+            <div class="subsidy-item"><span>✓</span> Bebas Ganjil-Genap di DKI Jakarta</div>
+            <div class="subsidy-item"><span>✓</span> Subsidi Beli Motor Listrik Rp 7 Juta</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # OPSI KENDARAAN (Mockup List)
+        st.markdown('<div style="margin-top: 1.5rem;" class="content-box"><div class="box-title">🚗 Opsi Terdekat</div>', unsafe_allow_html=True)
+        # Jika Anda ingin ini dinamis, ambil data dari tools rekomendasi_ev() yang tersimpan di chat history.
+        # Untuk UI mockup, ini format penampilannya:
+        st.markdown(f"""
+        <div class="ev-card">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div>
+                    <h4 style="margin: 0; font-weight: 800; color: #111827;">Kandidat EV Terbaik</h4>
+                    <p style="margin: 0; font-size: 0.8rem; font-weight: bold; color: #64748b;">Lihat detail di riwayat chat</p>
+                </div>
+                <div class="ev-price">Tersedia</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # Tampilkan percakapan
-    for msg in st.session_state.conversation:
+    # 4. LAPORAN ANALISIS LENGKAP (Teks Panjang)
+    if st.session_state.parsed_result and "analisis_lengkap" in st.session_state.parsed_result:
+        st.markdown('<div style="margin-top: 1.5rem;" class="content-box">', unsafe_allow_html=True)
+        st.markdown('<div class="box-title">📑 Laporan Analisis Mendalam</div>', unsafe_allow_html=True)
+        st.markdown(st.session_state.parsed_result["analisis_lengkap"])
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+    # ─── FOLLOW-UP CHAT MODERN ─────────────────────────────────────────
+    st.markdown("<div style='margin-top: 3rem;'></div>", unsafe_allow_html=True)
+    st.markdown('<div class="content-box" style="background: #f8fafc; border-radius: 2rem;">', unsafe_allow_html=True)
+    st.markdown('<div class="box-title">💬 Diskusi Lanjut dengan Agent</div>', unsafe_allow_html=True)
+    
+    # Render History khusus untuk User dan Assistant (selain pesan JSON pertama)
+    for msg in st.session_state.conversation[1:]:
         if msg["role"] == "user":
-            with st.expander("📝 Input Profil Kamu", expanded=False):
-                st.text(msg["content"])
+            st.markdown(f'<div class="chat-user-msg">{msg["content"]}</div>', unsafe_allow_html=True)
         elif msg["role"] == "assistant":
-            st.markdown(f'<div class="chat-agent">{msg["content"]}</div>',
-                        unsafe_allow_html=True)
-
-    # ─── CHAT FOLLOW-UP ──────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("#### 💬 Tanya Lanjut ke Agent")
-    st.markdown("Contoh: *'Kalau harga BBM naik 20% gimana?'* atau *'EV mana yang paling hemat?'*")
+            # Jangan tampilkan raw JSON di chat box jika itu JSON
+            if "{" not in msg["content"][:5]: 
+                st.markdown(f'<div class="chat-agent-msg">{msg["content"]}</div>', unsafe_allow_html=True)
 
     with st.form("chat_form", clear_on_submit=True):
-        user_input = st.text_input("Pertanyaan kamu:", placeholder="Ketik pertanyaan di sini...")
-        submitted  = st.form_submit_button("Kirim →", type="primary")
+        col_input, col_btn = st.columns([5, 1])
+        with col_input:
+            user_input = st.text_input("Tanya skenario lain (Misal: Kalau harga BBM naik 20%?)...", label_visibility="collapsed")
+        with col_btn:
+            submitted = st.form_submit_button("Kirim", use_container_width=True)
 
     if submitted and user_input:
-        with st.spinner("Agent sedang menjawab..."):
+        def update_thinking_chat(tname, targs):
+            st.write(f"⚙️ Analisis: {tname}...")
+            
+        with st.status("🤖 Agent menyusun jawaban...", expanded=True) as status:
             try:
-                response, updated_history = run_agent(
-                    user_input, st.session_state.conversation.copy()
-                )
+                response, updated_history = run_agent(user_input, st.session_state.conversation.copy(), status_callback=update_thinking_chat)
+                status.update(label="✅ Jawaban Siap!", state="complete", expanded=False)
                 st.session_state.conversation = updated_history
                 st.rerun()
             except Exception as e:
-                st.error(f"Error: {str(e)}")
-
-# ─── FOOTER ──────────────────────────────────────────────────────────
-st.markdown("---")
-st.markdown("""
-<div style="text-align:center;color:#94a3b8;font-size:0.8rem">
-    EnergiCerdas · TechnoFest 2026 · Tim RDR · Universitas — AI for Environmental & Social Impact<br>
-    Data referensi: PLN, Pertamina, IPCC, Ditjen EBTKE ESDM 2023
-</div>
-""", unsafe_allow_html=True)
+                status.update(label="❌ Error", state="error")
+                st.error(str(e))
+    st.markdown('</div>', unsafe_allow_html=True)
