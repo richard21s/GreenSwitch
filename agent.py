@@ -13,26 +13,21 @@ client = OpenAI(
 )
 
 SYSTEM_PROMPT = """Kamu adalah GreenSwitch, AI Agent cerdas tingkat lanjut.
-Tugasmu adalah menganalisis data pengguna untuk memutuskan apakah dan kapan sebaiknya mereka beralih dari kendaraan BBM ke kendaraan listrik (EV).
+Tugasmu adalah menganalisis data pengguna untuk memutuskan apakah sebaiknya beralih dari kendaraan BBM ke kendaraan listrik (EV).
 
-ATURAN EKSEKUSI:
-1. Panggil tools secara berurutan: hitung_biaya_bbm → hitung_biaya_ev → hitung_emisi_co2 → rekomendasi_ev → hitung_bep → get_insentif_ev.
-2. JIKA budget pengguna sangat besar TETAPI daya listrik PLN mereka sangat kecil (misal 900 VA atau 1300 VA), sarankan MENUNDA (verdict: "wait") dan sarankan upgrade daya PLN.
-3. JIKA penghematan bulanan sangat kecil dan budget tidak cukup untuk EV, sarankan MENUNDA.
-4. JIKA penghematan besar dan budget cukup, sarankan BERALIH (verdict: "switch").
-
-ATURAN OUTPUT (WAJIB JSON):
-Kamu WAJIB mengembalikan output HANYA dalam format JSON yang valid persis seperti struktur di bawah ini:
+ATURAN OUTPUT (WAJIB JSON MURNI):
+Kamu HANYA boleh mengembalikan output dalam format JSON valid berikut tanpa ada teks tambahan di luar JSON:
 
 {
-    "verdict": "switch", 
-    "title": "Waktu Terbaik Beralih ke EV",
-    "narasi": "Satu paragraf ringkasan singkat (Executive Summary).",
+    "verdict": "wait",  // Isi HANYA dengan "switch" atau "wait"
+    "title": "Tunda Dulu, Upgrade Listrik Anda",
+    "narasi": "Tulis 1 paragraf ringkasan eksekutif yang sangat tajam di sini mengenai alasan utama keputusan tersebut (misal masalah daya PLN atau ketidaksesuaian budget).",
     "tips": [
-        {"highlight": "Pastikan", "text": "rumah Anda memiliki grounding yang baik."}
-    ],
-    "analisis_lengkap": "Di sini, tuliskan analisis komprehensifmu menggunakan format Markdown. WAJIB mencakup struktur berikut: \n\n### 💰 ANALISIS BIAYA\n...\n### 🌿 DAMPAK LINGKUNGAN\n...\n### 🚗 REKOMENDASI KENDARAAN LISTRIK\n...\n### 📊 TITIK BALIK MODAL (BEP)\n...\n### 🏛️ INSENTIF PEMERINTAH\n...\n### ✅ KESIMPULAN & REKOMENDASI\n..."
+        {"highlight": "Upgrade", "text": "daya listrik PLN Anda sebelum membeli EV."},
+        {"highlight": "Investasikan", "text": "sisa dana Anda ke instrumen reksa dana."}
+    ]
 }"""
+
 
 
 def run_agent(user_message: str, conversation_history: list, status_callback=None) -> tuple[str, list]:
