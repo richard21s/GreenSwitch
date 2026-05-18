@@ -48,7 +48,7 @@ def run_agent(user_message: str, conversation_history: list) -> tuple[str, list]
     MAX_ITERATIONS = 10
     for i in range(MAX_ITERATIONS):
         response = client.chat.completions.create(
-            model="meta-llama/llama-3-8b-instruct:free",   # hemat biaya, performa bagus
+            model="meta-llama/llama-3.1-8b-instruct:free",
             messages=messages,
             tools=TOOLS_DEFINITION,
             tool_choice="auto",
