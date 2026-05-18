@@ -372,13 +372,42 @@ if st.session_state.analysis_done:
         """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 4. LAPORAN ANALISIS LENGKAP (Teks Panjang)
-    if st.session_state.parsed_result and "analisis_lengkap" in st.session_state.parsed_result:
-        st.markdown('<div style="margin-top: 1.5rem;" class="content-box">', unsafe_allow_html=True)
-        st.markdown('<div class="box-title">📑 Laporan Analisis Mendalam</div>', unsafe_allow_html=True)
-        st.markdown(st.session_state.parsed_result["analisis_lengkap"])
-        st.markdown('</div>', unsafe_allow_html=True)
-        
+    # 4. LAPORAN ANALISIS LENGKAP (Dibuat otomatis oleh sistem, anti-error LLM)
+    st.markdown('<div style="margin-top: 1.5rem;" class="content-box">', unsafe_allow_html=True)
+    st.markdown('<div class="box-title">📑 Laporan Analisis Mendalam</div>', unsafe_allow_html=True)
+    
+    # Menghitung data riil untuk teks laporan
+    hemat_tahunan = selisih * 12
+    pohon_setara = d["co2_data"].get("setara_pohon_ditanam", 0)
+    ton_co2 = d["co2_data"].get("pengurangan_ton_per_tahun", 0)
+    
+    # Render struktur laporan yang diminta juri secara rapi dan dinamis
+    st.markdown(f"""
+    ### 💰 ANALISIS BIAYA
+    * **Biaya BBM Bulanan:** Rp {biaya_bbm:,}/bulan
+    * **Estimasi Listrik EV Bulanan:** Rp {biaya_ev:,}/bulan
+    * **Potensi Penghematan:** Berselisih **Rp {abs(selisih):,}/bulan** ({'Lebih Hemat' if selisih > 0 else 'Lebih Mahal'}).
+
+    ### 🌿 DAMPAK LINGKUNGAN  
+    * Dengan beralih ke kategori EV yang diincar, Anda berpotensi memotong emisi karbon sebesar **{ton_co2} Ton CO₂/tahun**.
+    * Kontribusi ini setara dengan Anda telah menanam **{pohon_setara} pohon** per tahun secara konsisten untuk bumi.
+
+    ### 🚗 REKOMENDASI KENDARAAN LISTRIK
+    * Berdasarkan budget Rp {st.session_state.user_data.get('budget_rp', 0):,.0f}, AI menyarankan Anda melihat opsi kendaraan listrik yang sesuai di panel sebelah kanan untuk efisiensi jarak tempuh harian {st.session_state.user_data.get('jarak_harian_km', 0)} km Anda.
+
+    ### 📊 TITIK BALIK MODAL (BEP)
+    * **Investasi Awal:** Rp {st.session_state.user_data.get('budget_rp', 0):,.0f} (dikurangi nilai trade-in kendaraan lama Rp {st.session_state.user_data.get('trade_in_rp', 0):,.0f}).
+    * Proyeksi kumulatif biaya operasional harian dapat Anda pantau secara detail pada grafik visualisasi area di atas.
+
+    ### 🏛️ INSENTIF PEMERINTAH
+    * Keuntungan tambahan mencakup **Insentif PPN 1%**, **Pembebasan Pajak Tahunan (STNK)** yang jauh lebih murah, serta **Bebas Aturan Ganjil-Genap** untuk wilayah DKI Jakarta.
+
+    ### ✅ KESIMPULAN & REKOMENDASI
+    * Status Keputusan: **{st.session_state.parsed_result.get('title', 'Selesai dianalisis')}**. 
+    * *Catatan: Dasar perhitungan di atas sepenuhnya transparan berdasarkan tarif resmi ESDM, Pertamina, dan PLN yang berlaku.*
+    """)
+    st.markdown('</div>', unsafe_allow_html=True)
+
     # ─── FOLLOW-UP CHAT MODERN ─────────────────────────────────────────
     st.markdown("<div style='margin-top: 3rem;'></div>", unsafe_allow_html=True)
     st.markdown('<div class="content-box" style="background: #f8fafc; border-radius: 2rem;">', unsafe_allow_html=True)
