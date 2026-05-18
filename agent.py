@@ -35,7 +35,7 @@ Kamu WAJIB mengembalikan output HANYA dalam format JSON yang valid persis sepert
 }"""
 
 
-def run_agent(user_message: str, conversation_history: list) -> tuple[str, list]:
+def run_agent(user_message: str, conversation_history: list, status_callback=None) -> tuple[str, list]:
     """
     Menjalankan agent dengan conversation history.
     Returns: (respons_teks, history_terbaru)
