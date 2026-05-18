@@ -1,4 +1,3 @@
-# data.py — Database referensi EnergiCerdas
 # Sumber: PLN, Pertamina, ESDM, data pasar EV Indonesia 2026
 
 # ─── HARGA BBM (Rp/liter) ────────────────────────────────────────────
