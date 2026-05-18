@@ -5,10 +5,10 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from tools import TOOLS_DEFINITION, execute_tool
 
-load_dotenv()
+api_key_rahasia = st.secrets["OPENROUTER_API_KEY"]
 client = OpenAI(
+    api_key=api_key_rahasia,
     base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
 )
 
 SYSTEM_PROMPT = """Kamu adalah GreenSwitch, AI Agent yang membantu masyarakat Indonesia 
