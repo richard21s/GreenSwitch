@@ -238,17 +238,29 @@ if analyze_btn:
     
     prompt = build_initial_prompt(st.session_state.user_data)
     
+    # KAMUS TEKS UI UNTUK PANEL THINKING
+    UI_TOOL_NAMES = {
+        "hitung_biaya_bbm": "Menghitung pengeluaran BBM bulanan...",
+        "hitung_biaya_ev": "Mengkalkulasi tarif charging listrik EV...",
+        "hitung_emisi_co2": "Menghitung dampak pengurangan emisi karbon...",
+        "rekomendasi_ev": "Menelusuri database EV yang sesuai budget...",
+        "hitung_bep": "Menyusun proyeksi finansial Break-Even Point...",
+        "get_insentif_ev": "Mengecek regulasi subsidi pemerintah...",
+        "cari_info_web": "Mencari informasi real-time di internet..."
+    }
+    
     def update_thinking(tname, targs):
-        st.write(f"⚙️ Memanggil tool: {tname}...")
+        pesan_ui = UI_TOOL_NAMES.get(tname, f"Memproses: {tname}...")
+        st.write(f"⚙️ {pesan_ui}")
 
     with st.status("🤖 Agent GreenSwitch sedang berpikir...", expanded=True) as status:
         try:
             response, history = run_agent(prompt, [], status_callback=update_thinking)
-            status.update(label="✅ Analisis Selesai dan Data Siap!", state="complete", expanded=False)
+            status.update(label="✅ Analisis Selesai dan Data Siap!", state="complete", expanded=True)
             
             st.session_state.conversation = history
             
-            # ─── PERBAIKAN: PARSING JSON CERDAS (REAL DATA AI) ────────────────
+            # ─── PARSING JSON CERDAS DENGAN FILTER JUDUL ────────────────
             try:
                 # Bersihkan spasi, baris baru, dan markdown ```json jika bocor
                 clean_json = response.replace("```json", "").replace("```", "").strip()
@@ -256,15 +268,28 @@ if analyze_btn:
                 # Coba parse JSON asli dari AI
                 parsed = json.loads(clean_json)
                 
-                # Petakan key secara fleksibel (Jaga-jaga jika AI mengganti nama key)
+                # Ekstrak data mentah dari AI
+                raw_verdict = parsed.get("verdict", parsed.get("keputusan", "switch")).lower()
+                raw_title = parsed.get("title", parsed.get("judul", parsed.get("kesimpulan_utama", "Hasil Analisis AI")))
+                
+                # ─── FILTER JUDUL CERDAS (ANTI-JUDUL DATAR) ───
+                if raw_verdict == "wait" and "tunda" not in raw_title.lower():
+                    final_title = "Tunda Dulu, Kondisi Belum Proporsional"
+                elif raw_verdict == "switch" and "waktu terbaik" not in raw_title.lower() and "beralih" not in raw_title.lower():
+                    final_title = "Rekomendasi: Waktu Terbaik Beralih ke EV"
+                else:
+                    final_title = raw_title
+                # ──────────────────────────────────────────────
+                
+                # Petakan key secara fleksibel
                 st.session_state.parsed_result = {
-                    "verdict": parsed.get("verdict", parsed.get("keputusan", "switch")),
-                    "title": parsed.get("title", parsed.get("judul", parsed.get("kesimpulan_utama", "Hasil Analisis AI"))),
+                    "verdict": raw_verdict,
+                    "title": final_title,
                     "narasi": parsed.get("narasi", parsed.get("penjelasan", parsed.get("kesimpulan", "Lihat detail analisis di bawah."))),
                     "tips": parsed.get("tips", parsed.get("saran", parsed.get("rekomendasi", [])))
                 }
                 
-                # Mengamankan struktur tips jika AI mengembalikan list of strings alih-alih list of dicts
+                # Mengamankan struktur tips
                 safe_tips = []
                 for t in st.session_state.parsed_result["tips"]:
                     if isinstance(t, dict):
@@ -274,19 +299,17 @@ if analyze_btn:
                 
                 st.session_state.parsed_result["tips"] = safe_tips
                 
-                # Jika AI lupa membuat array tips sama sekali, jangan biarkan kosong
                 if not st.session_state.parsed_result["tips"]:
                     st.session_state.parsed_result["tips"] = [
                         {"highlight": "Catatan", "text": "Silakan pelajari laporan mendalam di bawah untuk detail lengkap."}
                     ]
                     
             except Exception as json_err:
-                # JIKA AI GAGAL BIKIN JSON DAN MENGIRIM TEKS BIASA:
-                # Masukkan REAL TEKS dari AI ke dalam UI tanpa hardcode!
+                # JIKA AI GAGAL BIKIN JSON DAN MENGIRIM TEKS BIASA
                 st.session_state.parsed_result = {
                     "verdict": "switch",
                     "title": "Kesimpulan Agent",
-                    "narasi": response,  # <--- INI ADALAH REAL DATA DARI AI
+                    "narasi": response,  # <--- REAL DATA TEKS DARI AI
                     "tips": [
                         {"highlight": "Info Sistem", "text": "Agent merespons dengan format naratif murni. Seluruh detail penjabaran terdapat pada teks di atas."}
                     ]
@@ -306,7 +329,6 @@ if st.session_state.analysis_done:
     selisih = biaya_bbm - biaya_ev
     co2_kg = d["co2_data"]["emisi_bbm_kg_per_tahun"] if "emisi_bbm_kg_per_tahun" in d["co2_data"] else d["co2_data"].get("emisi_bbm_network_kg", 0)
     
-    # Hitung nilai investasi awal riil dalam satuan JUTA untuk grafik
     u_budget = st.session_state.user_data.get('budget_rp', 300_000_000)
     u_trade = st.session_state.user_data.get('trade_in_rp', 15_000_000)
     investasi_awal_juta = (u_budget - u_trade) / 1_000_000
@@ -351,11 +373,9 @@ if st.session_state.analysis_done:
     col_left, col_right = st.columns([1.5, 1])
     
     with col_left:
-        # CHART AREA — SKALA DIKALIBRASI KE SATUAN JUTA RP (FIXED SCALE)
         st.markdown('<div class="content-box"><div class="box-title">📈 Proyeksi Kumulatif 5 Tahun (Dalam Juta Rp)</div>', unsafe_allow_html=True)
         bulan = list(range(0, 61))
         
-        # Konversi biaya bulanan harian ke dalam satuan juta agar grafik sinkron proporsional
         kum_bbm = [(m * biaya_bbm) / 1_000_000 for m in bulan]
         kum_ev  = [investasi_awal_juta + ((m * biaya_ev) / 1_000_000) for m in bulan]
         
@@ -373,7 +393,6 @@ if st.session_state.analysis_done:
         st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # TIPS KHUSUS (TERJAMIN DENGAN AMBIL DATA PARSED_RESULT)
         if res and "tips" in res:
             st.markdown('<div style="margin-top: 1.5rem;" class="content-box"><div class="box-title">💡 Tips Khusus untuk Anda</div>', unsafe_allow_html=True)
             for i, tip in enumerate(res["tips"]):
@@ -386,7 +405,6 @@ if st.session_state.analysis_done:
             st.markdown('</div>', unsafe_allow_html=True)
 
     with col_right:
-        # SUBSIDY BOX
         st.markdown("""
         <div class="subsidy-box">
             <div class="subsidy-title">🏛️ Insentif Pemerintah</div>
@@ -396,15 +414,14 @@ if st.session_state.analysis_done:
         </div>
         """, unsafe_allow_html=True)
         
-        # OPSI KENDARAAN (DINAMIS MENGIKUTI INPUT SELECTION SIDEBAR)
         st.markdown('<div style="margin-top: 1.5rem;" class="content-box"><div class="box-title">🚗 Opsi Unit EV Terdekat</div>', unsafe_allow_html=True)
         
-        # Penentuan entri spesifikasi mobil/motor secara dinamis berdasarkan kategori diincar
-        if kategori_ev_diincar == "Motor":
+        kat_ev = st.session_state.user_data.get('kategori_ev_diincar', 'Mobil City Car')
+        if kat_ev == "Motor":
             nama_ev, harga_ev_txt, spec_ev = "Smoot Tempur / ALVA One", "Rp 20 - 36 Jt", "Jangkauan 60-70 km | Ekosistem Swap Baterai"
-        elif kategori_ev_diincar == "Mobil City Car":
+        elif kat_ev == "Mobil City Car":
             nama_ev, harga_ev_txt, spec_ev = "Wuling Air EV Lite / NETA V", "Rp 190 - 299 Jt", "Jangkauan 200-380 km | Durasi AC Fast 35 Min"
-        elif kategori_ev_diincar == "Mobil Sedan/MPV":
+        elif kat_ev == "Mobil Sedan/MPV":
             nama_ev, harga_ev_txt, spec_ev = "Wuling Binguo / BYD Dolphin", "Rp 317 - 425 Jt", "Jangkauan 333-410 km | Teknologi Blade Battery"
         else:
             nama_ev, harga_ev_txt, spec_ev = "Hyundai Ioniq 5 / BYD Atto 3", "Rp 515 - 782 Jt", "Platform EV E-GMP | Fitur V2L Port Listrik"
@@ -418,7 +435,7 @@ if st.session_state.analysis_done:
                 </div>
                 <div class="ev-price">{harga_ev_txt}</div>
             </div>
-            <p style="margin: 0; font-size: 0.82rem; color: #64748b; font-weight: 500; line-height: 1.4;">Rekomendasi ini disesuaikan otomatis dengan batas atas pagu anggaran Anda sebesar Rp {budget_juta} Juta rupiah.</p>
+            <p style="margin: 0; font-size: 0.82rem; color: #64748b; font-weight: 500; line-height: 1.4;">Rekomendasi ini disesuaikan otomatis dengan batas atas pagu anggaran Anda sebesar Rp {u_budget / 1_000_000:,.0f} Juta rupiah.</p>
         </div>
         """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
@@ -478,8 +495,19 @@ if st.session_state.analysis_done:
             submitted = st.form_submit_button("Kirim", use_container_width=True)
 
     if submitted and user_input:
+        UI_TOOL_NAMES_CHAT = {
+            "hitung_biaya_bbm": "Menghitung ulang pengeluaran BBM...",
+            "hitung_biaya_ev": "Mengkalkulasi ulang tarif listrik...",
+            "hitung_emisi_co2": "Menyesuaikan perhitungan karbon...",
+            "rekomendasi_ev": "Memfilter ulang database EV...",
+            "hitung_bep": "Memperbarui proyeksi Break-Even Point...",
+            "get_insentif_ev": "Mengecek regulasi subsidi...",
+            "cari_info_web": "Mencari informasi real-time di internet..."
+        }
+        
         def update_thinking_chat(tname, targs):
-            st.write(f"⚙️ Analisis: {tname}...")
+            pesan_ui = UI_TOOL_NAMES_CHAT.get(tname, f"Memproses: {tname}...")
+            st.write(f"⚙️ {pesan_ui}")
             
         with st.status("🤖 Agent menyusun jawaban...", expanded=True) as status:
             try:
