@@ -57,14 +57,34 @@ def run_agent(user_message: str, conversation_history: list, status_callback=Non
             conversation_history.append({"role": "assistant", "content": final_text})
             return final_text, conversation_history
 
-        # Proses semua tool calls yang diminta agent
-        messages.append(msg)
+        # ─── PERBAIKAN KRUSIAL: KONVERSI OBJEK KE KAMUS MURNI (DICTIONARY) ───
+        assistant_msg = {
+            "role": "assistant",
+            "content": msg.content or ""
+        }
+        
+        if msg.tool_calls:
+            assistant_msg["tool_calls"] = []
+            for tc in msg.tool_calls:
+                assistant_msg["tool_calls"].append({
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments
+                    }
+                })
+        
+        # Proses semua tool calls yang diminta agent ke dalam memori yang sudah aman
+        messages.append(assistant_msg)
+        # ───────────────────────────────────────────────────────────────────
+        
         tool_results = []
         
         for tc in msg.tool_calls:
             tool_name = tc.function.name
             
-            # ─── PERBAIKAN KRUSIAL: PROTEKSI ERROR SAAT AI MEMANGGIL TOOL ───
+            # ─── PROTEKSI ERROR SAAT AI MEMANGGIL TOOL (SELF-HEALING) ───
             try:
                 tool_args = json.loads(tc.function.arguments)
             except Exception as e:
@@ -95,7 +115,7 @@ def run_agent(user_message: str, conversation_history: list, status_callback=Non
 
         messages.extend(tool_results)
 
-    # ─── PERBAIKAN: Fallback return dalam bentuk JSON valid ───
+    # ─── Fallback return dalam bentuk JSON valid ───
     fallback_json = '{"verdict": "wait", "title": "Sistem Sibuk", "narasi": "Batas waktu pemikiran AI telah habis. Silakan klik Analisis Sekarang lagi.", "tips": []}'
     return fallback_json, conversation_history
 
