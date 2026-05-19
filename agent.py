@@ -1,10 +1,8 @@
 import json
 import os
-from openai import OpenAI
-from dotenv import load_dotenv
 import streamlit as st
+from openai import OpenAI
 from tools import TOOLS_DEFINITION, execute_tool
-
 
 api_key_rahasia = st.secrets["OPENROUTER_API_KEY"]
 client = OpenAI(
@@ -15,20 +13,21 @@ client = OpenAI(
 SYSTEM_PROMPT = """Kamu adalah GreenSwitch, AI Agent cerdas tingkat lanjut.
 Tugasmu adalah menganalisis data pengguna untuk memutuskan apakah sebaiknya beralih dari kendaraan BBM ke kendaraan listrik (EV).
 
-Kamu WAJIB mengembalikan output HANYA dalam format JSON valid tanpa markdown (TIDAK BOLEH pakai ```json), tanpa teks pembuka, dan tanpa teks penutup. 
+ATURAN EKSEKUSI (WAJIB DIIKUTI):
+1. Panggil tools secara berurutan: hitung_biaya_bbm → hitung_biaya_ev → hitung_emisi_co2 → rekomendasi_ev → hitung_bep.
+2. JIKA budget pengguna sangat besar TETAPI daya listrik PLN kecil, sarankan MENUNDA (verdict: "wait").
 
-STRUKTUR JSON YANG WAJIB KAMU IKUTI:
+STRUKTUR JSON OUTPUT (WAJIB!):
+Kamu HANYA boleh mengembalikan output dalam format JSON valid tanpa markdown. JANGAN gunakan tanda kutip ganda (") di dalam nilai teks, gunakan kutip tunggal (') saja agar JSON tidak rusak!
+
 {
-    "verdict": "tulis 'switch' atau 'wait' di sini",
+    "verdict": "switch",
     "title": "Tulis judul kesimpulan di sini",
-    "narasi": "Tulis 1 paragraf ringkasan analisis di sini. JANGAN gunakan tanda kutip ganda (\") di dalam teks ini, gunakan kutip tunggal (') saja agar JSON tidak rusak.",
+    "narasi": "Tulis paragraf ringkasan di sini tanpa kutip ganda.",
     "tips": [
-        {"highlight": "KataKunci1", "text": "Isi saran pertama tanpa tanda kutip ganda di dalam teks"},
-        {"highlight": "KataKunci2", "text": "Isi saran kedua tanpa tanda kutip ganda di dalam teks"},
-        {"highlight": "KataKunci3", "text": "Isi saran ketiga tanpa tanda kutip ganda di dalam teks"}
+        {"highlight": "KataKunci", "text": "Isi saran tanpa kutip ganda"}
     ]
 }"""
-
 
 
 def run_agent(user_message: str, conversation_history: list, status_callback=None) -> tuple[str, list]:
@@ -38,7 +37,6 @@ def run_agent(user_message: str, conversation_history: list, status_callback=Non
     """
     # Tambah pesan user ke history
     conversation_history.append({"role": "user", "content": user_message})
-
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history
 
     # Loop agentic: agent bisa panggil tools berkali-kali
@@ -61,11 +59,27 @@ def run_agent(user_message: str, conversation_history: list, status_callback=Non
 
         # Proses semua tool calls yang diminta agent
         messages.append(msg)
-
         tool_results = []
+        
         for tc in msg.tool_calls:
-            tool_name   = tc.function.name
-            tool_args   = json.loads(tc.function.arguments)
+            tool_name = tc.function.name
+            
+            # ─── PERBAIKAN KRUSIAL: PROTEKSI ERROR SAAT AI MEMANGGIL TOOL ───
+            try:
+                tool_args = json.loads(tc.function.arguments)
+            except Exception as e:
+                # Konsep SELF-HEALING: Jika AI typo bikin JSON argumen, sistem akan menyuruhnya mencoba lagi!
+                error_msg = f"Format JSON untuk argumen {tool_name} rusak. Tolong panggil tool ini lagi dengan format yang benar."
+                tool_results.append({
+                    "tool_call_id": tc.id,
+                    "role": "tool",
+                    "name": tool_name,
+                    "content": json.dumps({"error": error_msg})
+                })
+                if status_callback:
+                    status_callback(f"{tool_name} (Auto-Fixing Error...)", {})
+                continue # Langsung lanjut ke iterasi berikutnya agar AI memperbaiki dirinya
+            # ─────────────────────────────────────────────────────────────────
 
             if status_callback:
                 status_callback(tool_name, tool_args)
@@ -74,32 +88,27 @@ def run_agent(user_message: str, conversation_history: list, status_callback=Non
 
             tool_results.append({
                 "tool_call_id": tc.id,
-                "role":         "tool",
-                "name":         tool_name,
-                "content":      str(tool_result),
+                "role": "tool",
+                "name": tool_name,
+                "content": str(tool_result),
             })
 
         messages.extend(tool_results)
 
-    # Fallback jika melebihi iterasi
-    return "Maaf, terjadi kesalahan dalam memproses permintaan. Silakan coba lagi.", conversation_history
+    # ─── PERBAIKAN: Fallback return dalam bentuk JSON valid ───
+    fallback_json = '{"verdict": "wait", "title": "Sistem Sibuk", "narasi": "Batas waktu pemikiran AI telah habis. Silakan klik Analisis Sekarang lagi.", "tips": []}'
+    return fallback_json, conversation_history
 
 
 def build_initial_prompt(data: dict) -> str:
     """Membuat prompt awal dari form input pengguna."""
-    return f"""Tolong analisis profil saya dan berikan rekomendasi lengkap apakah saya sebaiknya beralih ke kendaraan listrik:
-
-**Profil Kendaraan & Kebiasaan:**
+    return f"""Tolong analisis profil saya:
 - Kendaraan BBM saat ini: {data['jenis_kendaraan_saat_ini']}
 - Kategori EV yang ingin dibeli: {data['kategori_ev_diincar']}
 - BBM yang digunakan: {data['jenis_bbm']}
 - Jarak tempuh harian: {data['jarak_harian_km']} km
-- Kota: {data.get('kota', 'Indonesia')}
-
-**Profil Finansial & Listrik:**
 - Golongan PLN: {data['golongan_pln']}
-- Harga jual kendaraan lama (Trade-in): Rp {data['trade_in_rp']:,.0f}
-- Budget maksimal untuk beli EV: Rp {data['budget_rp']:,.0f}
+- Harga jual kendaraan lama: Rp {data['trade_in_rp']:,.0f}
+- Budget maksimal beli EV: Rp {data['budget_rp']:,.0f}
 
-AI Agent harus memanggil fungsi `hitung_biaya_bbm` dengan parameter kendaraan saat ini, dan memanggil fungsi `hitung_biaya_ev` serta `rekomendasi_ev` menggunakan parameter kategori EV yang diincar.
-Berikan analisis lengkap dengan memanggil semua tools yang relevan, lalu berikan rekomendasi yang jelas."""
+Panggil semua tools secara berurutan. Setelah selesai menganalisis, KEMBALIKAN OUTPUT DALAM BENTUK JSON VALID SESUAI SYSTEM PROMPT."""
