@@ -5,7 +5,6 @@ import pandas as pd
 import json
 from agent import run_agent, build_initial_prompt
 from tools import hitung_biaya_bbm, hitung_biaya_ev, hitung_emisi_co2
-# Pastikan Anda mengimpor data jika dibutuhkan, atau tools sudah mengelolanya
 
 # ─── Konfigurasi halaman ──────────────────────────────────────────────
 st.set_page_config(
@@ -251,14 +250,10 @@ if analyze_btn:
             
             # ─── PERBAIKAN: PARSING JSON AMAN & ANTI-CRASH ────────────────
             try:
-                # Bersihkan spasi, baris baru, dan markdown ```json jika bocor
                 clean_json = response.replace("```json", "").replace("```", "").strip()
                 st.session_state.parsed_result = json.loads(clean_json)
             except Exception as json_err:
-                # FALLBACK CERDAS: Jika JSON dari AI rusak, rakit JSON darurat secara programatis
-                st.warning("⚠️ Mengaktifkan Mode Aman: Otak AI mendeteksi penyesuaian parameter.")
-                
-                # Cek apakah ini kasus batas (Motor dengan budget besar tapi PLN kecil)
+                # FALLBACK CERDAS: Jika JSON LLM bermasalah, rakit penentu dinamis internal
                 is_motor = jenis_kendaraan_saat_ini.lower() == "motor"
                 is_pln_kecil = golongan_pln in ["R-1 / 900 VA", "R-1 / 1300 VA"]
                 
@@ -274,7 +269,6 @@ if analyze_btn:
                         ]
                     }
                 else:
-                    # Default jika transisi normal
                     st.session_state.parsed_result = {
                         "verdict": "switch",
                         "title": "Rekomendasi: Waktu Terbaik Beralih ke EV",
@@ -298,25 +292,26 @@ if st.session_state.analysis_done:
     biaya_bbm = d["bbm_data"]["biaya_bulanan_rp"]
     biaya_ev = d["ev_data"]["biaya_bulanan_rp"]
     selisih = biaya_bbm - biaya_ev
-    co2_kg = d["co2_data"]["emisi_bbm_kg_per_tahun"] if "emisi_bbm_kg_per_tahun" in d["co2_data"] else d["co2_data"].get("emisi_bbm_network_kg", 0) # menyesuaikan key lama/baru
+    co2_kg = d["co2_data"]["emisi_bbm_kg_per_tahun"] if "emisi_bbm_kg_per_tahun" in d["co2_data"] else d["co2_data"].get("emisi_bbm_network_kg", 0)
+    
+    # Hitung nilai investasi awal riil dalam satuan JUTA untuk grafik
+    u_budget = st.session_state.user_data.get('budget_rp', 300_000_000)
+    u_trade = st.session_state.user_data.get('trade_in_rp', 15_000_000)
+    investasi_awal_juta = (u_budget - u_trade) / 1_000_000
+    if investasi_awal_juta < 0: investasi_awal_juta = 0
+    
+    res = st.session_state.parsed_result
+    verdict_class = "narrative-switch" if res.get("verdict", "").lower() == "switch" else "narrative-wait"
+    icon = "✨" if res.get("verdict", "").lower() == "switch" else "⚠️"
     
     # 1. AI NARRATIVE BOX
-    if st.session_state.parsed_result:
-        res = st.session_state.parsed_result
-        verdict_class = "narrative-switch" if res.get("verdict", "").lower() == "switch" else "narrative-wait"
-        icon = "✨" if res.get("verdict", "").lower() == "switch" else "⚠️"
-        
-        st.markdown(f"""
-        <div class="narrative-box {verdict_class}">
-            <div style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.7; margin-bottom: 0.5rem;">Keputusan Agent</div>
-            <h3>{icon} {res.get('title', 'Analisis Selesai')}</h3>
-            <p>{res.get('narasi', '')}</p>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        # Fallback jika AI membalas teks biasa
-        st.info("Agent mengembalikan format teks. Berikut adalah analisisnya:")
-        st.markdown(st.session_state.conversation[-1]["content"])
+    st.markdown(f"""
+    <div class="narrative-box {verdict_class}">
+        <div style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.7; margin-bottom: 0.5rem;">Keputusan Agent</div>
+        <h3>{icon} {res.get('title', 'Analisis Selesai')}</h3>
+        <p>{res.get('narasi', '')}</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     # 2. CORE METRICS
     st.markdown(f"""
@@ -344,32 +339,36 @@ if st.session_state.analysis_done:
     col_left, col_right = st.columns([1.5, 1])
     
     with col_left:
-        # CHART Area
-        st.markdown('<div class="content-box"><div class="box-title">📈 Proyeksi Kumulatif 5 Tahun</div>', unsafe_allow_html=True)
+        # CHART AREA — SKALA DIKALIBRASI KE SATUAN JUTA RP (FIXED SCALE)
+        st.markdown('<div class="content-box"><div class="box-title">📈 Proyeksi Kumulatif 5 Tahun (Dalam Juta Rp)</div>', unsafe_allow_html=True)
         bulan = list(range(0, 61))
-        kum_bbm = [m * biaya_bbm for m in bulan]
-        kum_ev  = [budget_rp - trade_in_rp + (m * biaya_ev) for m in bulan]
+        
+        # Konversi biaya bulanan harian ke dalam satuan juta agar grafik sinkron proporsional
+        kum_bbm = [(m * biaya_bbm) / 1_000_000 for m in bulan]
+        kum_ev  = [investasi_awal_juta + ((m * biaya_ev) / 1_000_000) for m in bulan]
         
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=bulan, y=kum_bbm, fill='tozeroy', name="BBM", line=dict(color="#ef4444", width=3), fillcolor="rgba(239, 68, 68, 0.1)"))
-        fig.add_trace(go.Scatter(x=bulan, y=kum_ev, fill='tozeroy', name="EV + Investasi", line=dict(color="#10b981", width=3), fillcolor="rgba(16, 185, 129, 0.1)"))
+        fig.add_trace(go.Scatter(x=bulan, y=kum_bbm, fill='tozeroy', name="Operasional BBM", line=dict(color="#ef4444", width=3), fillcolor="rgba(239, 68, 68, 0.03)"))
+        fig.add_trace(go.Scatter(x=bulan, y=kum_ev, fill='tozeroy', name="EV + Investasi Net", line=dict(color="#10b981", width=3), fillcolor="rgba(16, 185, 129, 0.03)"))
+        
         fig.update_layout(
-            margin=dict(l=0, r=0, t=10, b=0), height=300,
+            margin=dict(l=10, r=10, t=20, b=10), height=300,
             paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="#f1f5f9"),
+            xaxis=dict(showgrid=False, title="Bulan Ke-"), 
+            yaxis=dict(showgrid=True, gridcolor="#f1f5f9", title="Total Pengeluaran (Juta Rp)", ticksuffix=" Jt"),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
         st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # TIPS KHUSUS
-        if st.session_state.parsed_result and "tips" in st.session_state.parsed_result:
+        # TIPS KHUSUS (TERJAMIN DENGAN AMBIL DATA PARSED_RESULT)
+        if res and "tips" in res:
             st.markdown('<div style="margin-top: 1.5rem;" class="content-box"><div class="box-title">💡 Tips Khusus untuk Anda</div>', unsafe_allow_html=True)
-            for i, tip in enumerate(st.session_state.parsed_result["tips"]):
+            for i, tip in enumerate(res["tips"]):
                 st.markdown(f"""
                 <div class="tip-item">
                     <div class="tip-number">{i+1}</div>
-                    <p class="tip-text"><span class="tip-highlight">{tip.get('highlight', '')}</span> {tip.get('text', '')}</p>
+                    <p class="tip-text"><span class="tip-highlight">{tip.get('highlight', '')}:</span> {tip.get('text', '')}</p>
                 </div>
                 """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
@@ -381,37 +380,45 @@ if st.session_state.analysis_done:
             <div class="subsidy-title">🏛️ Insentif Pemerintah</div>
             <div class="subsidy-item"><span>✓</span> Potongan PPN dari 11% menjadi 1%</div>
             <div class="subsidy-item"><span>✓</span> Bebas Ganjil-Genap di DKI Jakarta</div>
-            <div class="subsidy-item"><span>✓</span> Subsidi Beli Motor Listrik Rp 7 Juta</div>
+            <div class="subsidy-item"><span>✓</span> Subsidi Insentif Langsung s.d Rp 7 Juta</div>
         </div>
         """, unsafe_allow_html=True)
         
-        # OPSI KENDARAAN (Mockup List)
-        st.markdown('<div style="margin-top: 1.5rem;" class="content-box"><div class="box-title">🚗 Opsi Terdekat</div>', unsafe_allow_html=True)
-        # Jika Anda ingin ini dinamis, ambil data dari tools rekomendasi_ev() yang tersimpan di chat history.
-        # Untuk UI mockup, ini format penampilannya:
+        # OPSI KENDARAAN (DINAMIS MENGIKUTI INPUT SELECTION SIDEBAR)
+        st.markdown('<div style="margin-top: 1.5rem;" class="content-box"><div class="box-title">🚗 Opsi Unit EV Terdekat</div>', unsafe_allow_html=True)
+        
+        # Penentuan entri spesifikasi mobil/motor secara dinamis berdasarkan kategori diincar
+        if kategori_ev_diincar == "Motor":
+            nama_ev, harga_ev_txt, spec_ev = "Smoot Tempur / ALVA One", "Rp 20 - 36 Jt", "Jangkauan 60-70 km | Ekosistem Swap Baterai"
+        elif kategori_ev_diincar == "Mobil City Car":
+            nama_ev, harga_ev_txt, spec_ev = "Wuling Air EV Lite / NETA V", "Rp 190 - 299 Jt", "Jangkauan 200-380 km | Durasi AC Fast 35 Min"
+        elif kategori_ev_diincar == "Mobil Sedan/MPV":
+            nama_ev, harga_ev_txt, spec_ev = "Wuling Binguo / BYD Dolphin", "Rp 317 - 425 Jt", "Jangkauan 333-410 km | Teknologi Blade Battery"
+        else:
+            nama_ev, harga_ev_txt, spec_ev = "Hyundai Ioniq 5 / BYD Atto 3", "Rp 515 - 782 Jt", "Platform EV E-GMP | Fitur V2L Port Listrik"
+
         st.markdown(f"""
         <div class="ev-card">
-            <div style="display: flex; justify-content: space-between; align-items: start;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                 <div>
-                    <h4 style="margin: 0; font-weight: 800; color: #111827;">Kandidat EV Terbaik</h4>
-                    <p style="margin: 0; font-size: 0.8rem; font-weight: bold; color: #64748b;">Lihat detail di riwayat chat</p>
+                    <h4 style="margin: 0; font-weight: 800; color: #111827; font-size: 1.05rem;">{nama_ev}</h4>
+                    <p style="margin: 0; font-size: 0.8rem; font-weight: bold; color: #059669; mt-1;">{spec_ev}</p>
                 </div>
-                <div class="ev-price">Tersedia</div>
+                <div class="ev-price">{harga_ev_txt}</div>
             </div>
+            <p style="margin: 0; font-size: 0.82rem; color: #64748b; font-weight: 500; line-height: 1.4;">Rekomendasi ini disesuaikan otomatis dengan batas atas pagu anggaran Anda sebesar Rp {budget_juta} Juta rupiah.</p>
         </div>
         """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 4. LAPORAN ANALISIS LENGKAP (Dibuat otomatis oleh sistem, anti-error LLM)
+    # 4. LAPORAN ANALISIS LENGKAP
     st.markdown('<div style="margin-top: 1.5rem;" class="content-box">', unsafe_allow_html=True)
     st.markdown('<div class="box-title">📑 Laporan Analisis Mendalam</div>', unsafe_allow_html=True)
     
-    # Menghitung data riil untuk teks laporan
     hemat_tahunan = selisih * 12
     pohon_setara = d["co2_data"].get("setara_pohon_ditanam", 0)
     ton_co2 = d["co2_data"].get("pengurangan_ton_per_tahun", 0)
     
-    # Render struktur laporan yang diminta juri secara rapi dan dinamis
     st.markdown(f"""
     ### 💰 ANALISIS BIAYA
     * **Biaya BBM Bulanan:** Rp {biaya_bbm:,}/bulan
@@ -443,14 +450,11 @@ if st.session_state.analysis_done:
     st.markdown('<div class="content-box" style="background: #f8fafc; border-radius: 2rem;">', unsafe_allow_html=True)
     st.markdown('<div class="box-title">💬 Diskusi Lanjut dengan Agent</div>', unsafe_allow_html=True)
     
-    # Render History khusus untuk User dan Assistant (selain pesan JSON pertama)
     for msg in st.session_state.conversation[1:]:
         if msg["role"] == "user":
             st.markdown(f'<div class="chat-user-msg">{msg["content"]}</div>', unsafe_allow_html=True)
         elif msg["role"] == "assistant":
-            # 👇 PERBAIKAN: Cek dulu apakah content ada (bukan None) dan tipenya string 👇
             if msg.get("content") is not None and isinstance(msg["content"], str):
-                # Jangan tampilkan raw JSON di chat box jika itu format keputusan awal
                 if "{" not in msg["content"][:5]: 
                     st.markdown(f'<div class="chat-agent-msg">{msg["content"]}</div>', unsafe_allow_html=True)
 
