@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ─── CSS KUSTOM (TERMASUK ANIMASI GEMINI) ─────────────────────────────
+# ─── CSS KUSTOM (Meniru Tailwind dari React) ──────────────────────────
 st.markdown("""
 <style>
     /* Global Background & Fonts */
@@ -245,12 +245,13 @@ if analyze_btn:
                 st.session_state.parsed_result["tips"] = [{"highlight": "Catatan", "text": "Silakan pelajari laporan mendalam di bawah."}]
                 
         except Exception as json_err:
-            # Fallback jika AI gagal membuat JSON
+            # PERBAIKAN: Cegah kata "None" muncul di layar
+            teks_narasi = str(response) if response and str(response).strip() not in ["", "None"] else "Sistem berhasil melakukan kalkulasi metrik, namun AI sedang sibuk sehingga gagal merangkum teks kesimpulan."
             st.session_state.parsed_result = {
-                "verdict": "switch", 
-                "title": "Kesimpulan Agent",
-                "narasi": response, 
-                "tips": [{"highlight": "Info Sistem", "text": "Agent merespons dengan format naratif murni."}]
+                "verdict": "wait", 
+                "title": "Kalkulasi Selesai (Menunggu AI)",
+                "narasi": teks_narasi, 
+                "tips": [{"highlight": "Saran Lanjutan", "text": "Anda bisa melihat angka detail pada metrik di bawah, atau klik tombol Analisis sekali lagi."}]
             }
             
         st.session_state.analysis_done = True
@@ -389,46 +390,12 @@ if st.session_state.analysis_done:
         st.markdown(ev_html, unsafe_allow_html=True)
 
 
-    # KOTAK LAPORAN ANALISIS (Dirangkai utuh dalam 1 Variabel)
+    # PERBAIKAN: Laporan Analisis dirakit utuh TANPA jeda baris kosong agar tidak bocor keluar kotak HTML
     hemat_tahunan = selisih * 12
     pohon_setara = d["co2_data"].get("setara_pohon_ditanam", 0)
     ton_co2 = d["co2_data"].get("pengurangan_ton_per_tahun", 0)
     
-    laporan_html = f"""
-    <div style="margin-top: 1.5rem;" class="content-box">
-        <div class="box-title">📑 Laporan Analisis Mendalam</div>
-
-        <h4 style="color: #065f46; font-size: 1rem; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 800;">💰 ANALISIS BIAYA</h4>
-        <ul style="color: #374151; font-weight: 500; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1rem;">
-            <li><b>Biaya BBM Bulanan:</b> Rp {biaya_bbm:,}/bulan</li>
-            <li><b>Estimasi Listrik EV Bulanan:</b> Rp {biaya_ev:,}/bulan</li>
-            <li><b>Potensi Penghematan:</b> Berselisih <b>Rp {abs(selisih):,}/bulan</b> ({'Lebih Hemat' if selisih > 0 else 'Lebih Mahal'}).</li>
-        </ul>
-
-        <h4 style="color: #065f46; font-size: 1rem; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 800;">🌿 DAMPAK LINGKUNGAN</h4>
-        <ul style="color: #374151; font-weight: 500; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1rem;">
-            <li>Memotong emisi karbon sebesar <b>{ton_co2} Ton CO₂/tahun</b>.</li>
-            <li>Setara dengan menanam <b>{pohon_setara} pohon</b> per tahun.</li>
-        </ul>
-
-        <h4 style="color: #065f46; font-size: 1rem; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 800;">🚗 REKOMENDASI KENDARAAN</h4>
-        <ul style="color: #374151; font-weight: 500; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1rem;">
-            <li>Sesuai budget Rp {u_budget / 1_000_000:,.0f} Juta dan jarak harian {st.session_state.user_data.get('jarak_harian_km', 0)} km, sistem memetakan opsi terbaik di panel samping.</li>
-        </ul>
-
-        <h4 style="color: #065f46; font-size: 1rem; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 800;">📊 TITIK BALIK MODAL (BEP)</h4>
-        <ul style="color: #374151; font-weight: 500; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1rem;">
-            <li><b>Investasi Bersih:</b> Rp {(u_budget - u_trade) / 1_000_000:,.0f} Juta (setelah potong trade-in).</li>
-            <li>Proyeksi perpotongan modal dapat dipantau di grafik area.</li>
-        </ul>
-
-        <h4 style="color: #065f46; font-size: 1rem; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 800;">✅ KESIMPULAN</h4>
-        <ul style="color: #374151; font-weight: 500; font-size: 0.95rem; line-height: 1.6; margin-bottom: 0;">
-            <li>Status Keputusan: <b>{res.get('title', 'Selesai dianalisis')}</b>.</li>
-            <li><i>Dasar perhitungan menggunakan tarif resmi ESDM, Pertamina, dan PLN yang berlaku.</i></li>
-        </ul>
-    </div>
-    """
+    laporan_html = f"""<div style="margin-top: 1.5rem;" class="content-box"><div class="box-title">📑 Laporan Analisis Mendalam</div><h4 style="color: #065f46; font-size: 1rem; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 800;">💰 ANALISIS BIAYA</h4><ul style="color: #374151; font-weight: 500; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1rem;"><li><b>Biaya BBM Bulanan:</b> Rp {biaya_bbm:,}/bulan</li><li><b>Estimasi Listrik EV Bulanan:</b> Rp {biaya_ev:,}/bulan</li><li><b>Potensi Penghematan:</b> Berselisih <b>Rp {abs(selisih):,}/bulan</b> ({'Lebih Hemat' if selisih > 0 else 'Lebih Mahal'}).</li></ul><h4 style="color: #065f46; font-size: 1rem; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 800;">🌿 DAMPAK LINGKUNGAN</h4><ul style="color: #374151; font-weight: 500; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1rem;"><li>Memotong emisi karbon sebesar <b>{ton_co2} Ton CO₂/tahun</b>.</li><li>Setara dengan menanam <b>{pohon_setara} pohon</b> per tahun.</li></ul><h4 style="color: #065f46; font-size: 1rem; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 800;">🚗 REKOMENDASI KENDARAAN</h4><ul style="color: #374151; font-weight: 500; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1rem;"><li>Sesuai budget Rp {u_budget / 1_000_000:,.0f} Juta dan jarak harian {st.session_state.user_data.get('jarak_harian_km', 0)} km, sistem memetakan opsi terbaik di panel samping.</li></ul><h4 style="color: #065f46; font-size: 1rem; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 800;">📊 TITIK BALIK MODAL (BEP)</h4><ul style="color: #374151; font-weight: 500; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1rem;"><li><b>Investasi Bersih:</b> Rp {(u_budget - u_trade) / 1_000_000:,.0f} Juta (setelah potong trade-in).</li><li>Proyeksi perpotongan modal dapat dipantau di grafik area.</li></ul><h4 style="color: #065f46; font-size: 1rem; margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 800;">✅ KESIMPULAN</h4><ul style="color: #374151; font-weight: 500; font-size: 0.95rem; line-height: 1.6; margin-bottom: 0;"><li>Status Keputusan: <b>{res.get('title', 'Selesai dianalisis')}</b>.</li><li><i>Dasar perhitungan menggunakan tarif resmi ESDM, Pertamina, dan PLN yang berlaku.</i></li></ul></div>"""
     st.markdown(laporan_html, unsafe_allow_html=True)
 
 
