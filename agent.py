@@ -18,14 +18,14 @@ ATURAN EKSEKUSI (WAJIB DIIKUTI):
 2. JIKA budget pengguna sangat besar TETAPI daya listrik PLN kecil, sarankan MENUNDA (verdict: "wait").
 
 STRUKTUR JSON OUTPUT (WAJIB!):
-Kamu HANYA boleh mengembalikan output dalam format JSON valid tanpa markdown. JANGAN gunakan tanda kutip ganda (") di dalam nilai teks, gunakan kutip tunggal (') saja agar JSON tidak rusak!
+Kamu HANYA boleh mengembalikan output dalam format JSON valid. WAJIB MENGGUNAKAN KUTIP GANDA (") untuk membungkus nama key dan teks value, BUKAN kutip tunggal (').
 
 {
     "verdict": "switch",
     "title": "Tulis judul kesimpulan di sini",
-    "narasi": "Tulis paragraf ringkasan di sini tanpa kutip ganda.",
+    "narasi": "Tulis paragraf ringkasan di sini.",
     "tips": [
-        {"highlight": "KataKunci", "text": "Isi saran tanpa kutip ganda"}
+        {"highlight": "KataKunci", "text": "Isi saran di sini"}
     ]
 }"""
 
