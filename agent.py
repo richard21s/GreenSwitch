@@ -35,32 +35,35 @@ def run_agent(user_message: str, conversation_history: list, status_callback=Non
     Menjalankan agent dengan conversation history.
     Returns: (respons_teks, history_terbaru)
     """
-    # Tambah pesan user ke history
     conversation_history.append({"role": "user", "content": user_message})
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history
 
-    # Loop agentic: agent bisa panggil tools berkali-kali
     MAX_ITERATIONS = 10
     for i in range(MAX_ITERATIONS):
         response = client.chat.completions.create(
-            model="openrouter/free",   # hemat biaya, performa bagus
+            model="openrouter/free", 
             messages=messages,
             tools=TOOLS_DEFINITION,
             tool_choice="auto",
         )
 
+        # ─── PERBAIKAN 1: CEGAH CRASH JIKA API OPENROUTER ERROR / KOSONG ───
+        if not hasattr(response, 'choices') or not response.choices:
+            raise ValueError("API OpenRouter mengembalikan respons kosong atau sedang sibuk.")
+        # ───────────────────────────────────────────────────────────────────
+
         msg = response.choices[0].message
 
         # Jika tidak ada tool call → agent selesai, kembalikan respons
         if not msg.tool_calls:
-            final_text = msg.content
+            final_text = msg.content or ""
             conversation_history.append({"role": "assistant", "content": final_text})
             return final_text, conversation_history
 
-        # ─── PERBAIKAN KRUSIAL: KONVERSI OBJEK KE KAMUS MURNI (DICTIONARY) ───
+        # ─── PERBAIKAN 2: FORMAT MEMORI ASISTEN SESUAI STANDAR STRICT OPENAI ───
         assistant_msg = {
             "role": "assistant",
-            "content": msg.content or ""
+            "content": msg.content  # Boleh None
         }
         
         if msg.tool_calls:
@@ -75,47 +78,43 @@ def run_agent(user_message: str, conversation_history: list, status_callback=Non
                     }
                 })
         
-        # Proses semua tool calls yang diminta agent ke dalam memori yang sudah aman
         messages.append(assistant_msg)
-        # ───────────────────────────────────────────────────────────────────
-        
+        # ───────────────────────────────────────────────────────────────────────
+
         tool_results = []
         
         for tc in msg.tool_calls:
             tool_name = tc.function.name
             
-            # ─── PROTEKSI ERROR SAAT AI MEMANGGIL TOOL (SELF-HEALING) ───
             try:
                 tool_args = json.loads(tc.function.arguments)
             except Exception as e:
-                # Konsep SELF-HEALING: Jika AI typo bikin JSON argumen, sistem akan menyuruhnya mencoba lagi!
-                error_msg = f"Format JSON untuk argumen {tool_name} rusak. Tolong panggil tool ini lagi dengan format yang benar."
+                error_msg = f"Format JSON rusak. Panggil tool ini lagi dengan benar."
                 tool_results.append({
                     "tool_call_id": tc.id,
                     "role": "tool",
-                    "name": tool_name,
-                    "content": json.dumps({"error": error_msg})
+                    "content": json.dumps({"error": error_msg}) # Jangan pakai 'name' di sini
                 })
                 if status_callback:
                     status_callback(f"{tool_name} (Auto-Fixing Error...)", {})
-                continue # Langsung lanjut ke iterasi berikutnya agar AI memperbaiki dirinya
-            # ─────────────────────────────────────────────────────────────────
+                continue 
 
             if status_callback:
                 status_callback(tool_name, tool_args)
 
             tool_result = execute_tool(tool_name, tool_args)
 
+            # ─── PERBAIKAN 3: FORMAT MEMORI TOOL TANPA PARAMETER USANG ───
             tool_results.append({
                 "tool_call_id": tc.id,
                 "role": "tool",
-                "name": tool_name,
                 "content": str(tool_result),
+                # "name": tool_name  <-- Ini yang kemarin bikin OpenRouter ngambek, kita hapus!
             })
+            # ─────────────────────────────────────────────────────────────
 
         messages.extend(tool_results)
 
-    # ─── Fallback return dalam bentuk JSON valid ───
     fallback_json = '{"verdict": "wait", "title": "Sistem Sibuk", "narasi": "Batas waktu pemikiran AI telah habis. Silakan klik Analisis Sekarang lagi.", "tips": []}'
     return fallback_json, conversation_history
 
