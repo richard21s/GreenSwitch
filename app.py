@@ -248,37 +248,49 @@ if analyze_btn:
             
             st.session_state.conversation = history
             
-            # ─── PERBAIKAN: PARSING JSON AMAN & ANTI-CRASH ────────────────
+            # ─── PERBAIKAN: PARSING JSON CERDAS (REAL DATA AI) ────────────────
             try:
+                # Bersihkan spasi, baris baru, dan markdown ```json jika bocor
                 clean_json = response.replace("```json", "").replace("```", "").strip()
-                st.session_state.parsed_result = json.loads(clean_json)
-            except Exception as json_err:
-                # FALLBACK CERDAS: Jika JSON LLM bermasalah, rakit penentu dinamis internal
-                is_motor = jenis_kendaraan_saat_ini.lower() == "motor"
-                is_pln_kecil = golongan_pln in ["R-1 / 900 VA", "R-1 / 1300 VA"]
                 
-                if is_motor and budget_rp > 100_000_000 and is_pln_kecil:
-                    st.session_state.parsed_result = {
-                        "verdict": "wait",
-                        "title": "Tunda Dulu, Kondisi Finansial & Daya Belum Proporsional",
-                        "narasi": f"Berdasarkan analisis sistem, anggaran Anda (Rp {budget_juta} Juta) terlampau besar untuk pasar motor listrik saat ini. Selain itu, daya rumah Anda ({golongan_pln}) belum ideal untuk pengisian daya harian tanpa mengganggu perangkat elektronik lainnya.",
-                        "tips": [
-                            {"highlight": "Upgrade Listrik", "text": "Naikkan daya PLN rumah Anda ke minimal 2200 VA sebelum meminang kendaraan listrik."},
-                            {"highlight": "Alokasi Dana", "text": "Investasikan sisa anggaran Anda yang sangat besar ke instrumen reksa dana atau deposito."},
-                            {"highlight": "Pantau Subsidi", "text": "Manfaatkan program bantuan insentif pemerintah untuk memotong harga unit secara drastis."}
-                        ]
-                    }
-                else:
-                    st.session_state.parsed_result = {
-                        "verdict": "switch",
-                        "title": "Rekomendasi: Waktu Terbaik Beralih ke EV",
-                        "narasi": f"Langkah transisi dari {jenis_kendaraan_saat_ini} ke {kategori_ev_diincar} sangat logis secara finansial. Penghematan operasional bulanan Anda cukup signifikan untuk menutup biaya investasi awal dalam jangka panjang.",
-                        "tips": [
-                            {"highlight": "Pastikan Grounding", "text": "Gunakan instalasi arde (grounding) yang baik di garasi rumah Anda demi keamanan baterai."},
-                            {"highlight": "Tambah Daya", "text": "Hubungi PLN untuk mengaktifkan promo diskon tambah daya khusus pemilik EV baru."},
-                            {"highlight": "Petakan Rute", "text": "Gunakan aplikasi penunjuk SPKLU untuk menghindari kekhawatiran jarak (range anxiety)."}
-                        ]
-                    }
+                # Coba parse JSON asli dari AI
+                parsed = json.loads(clean_json)
+                
+                # Petakan key secara fleksibel (Jaga-jaga jika AI mengganti nama key)
+                st.session_state.parsed_result = {
+                    "verdict": parsed.get("verdict", parsed.get("keputusan", "switch")),
+                    "title": parsed.get("title", parsed.get("judul", parsed.get("kesimpulan_utama", "Hasil Analisis AI"))),
+                    "narasi": parsed.get("narasi", parsed.get("penjelasan", parsed.get("kesimpulan", "Lihat detail analisis di bawah."))),
+                    "tips": parsed.get("tips", parsed.get("saran", parsed.get("rekomendasi", [])))
+                }
+                
+                # Mengamankan struktur tips jika AI mengembalikan list of strings alih-alih list of dicts
+                safe_tips = []
+                for t in st.session_state.parsed_result["tips"]:
+                    if isinstance(t, dict):
+                        safe_tips.append({"highlight": t.get("highlight", "Catatan"), "text": t.get("text", str(t))})
+                    else:
+                        safe_tips.append({"highlight": "Info", "text": str(t)})
+                
+                st.session_state.parsed_result["tips"] = safe_tips
+                
+                # Jika AI lupa membuat array tips sama sekali, jangan biarkan kosong
+                if not st.session_state.parsed_result["tips"]:
+                    st.session_state.parsed_result["tips"] = [
+                        {"highlight": "Catatan", "text": "Silakan pelajari laporan mendalam di bawah untuk detail lengkap."}
+                    ]
+                    
+            except Exception as json_err:
+                # JIKA AI GAGAL BIKIN JSON DAN MENGIRIM TEKS BIASA:
+                # Masukkan REAL TEKS dari AI ke dalam UI tanpa hardcode!
+                st.session_state.parsed_result = {
+                    "verdict": "switch",
+                    "title": "Kesimpulan Agent",
+                    "narasi": response,  # <--- INI ADALAH REAL DATA DARI AI
+                    "tips": [
+                        {"highlight": "Info Sistem", "text": "Agent merespons dengan format naratif murni. Seluruh detail penjabaran terdapat pada teks di atas."}
+                    ]
+                }
             # ──────────────────────────────────────────────────────────────
             
             st.session_state.analysis_done = True
