@@ -75,6 +75,22 @@ st.markdown("""
     .chat-user-msg { background: #111827; color: white; padding: 1rem 1.2rem; border-radius: 1.2rem 1.2rem 0.2rem 1.2rem; max-width: 85%; margin-left: auto; margin-bottom: 1rem; font-weight: 500; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
     .chat-agent-msg { background: white; border: 1px solid #e5e7eb; color: #1f2937; padding: 1rem 1.2rem; border-radius: 1.2rem 1.2rem 1.2rem 0.2rem; max-width: 85%; margin-right: auto; margin-bottom: 1rem; font-weight: 500; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); line-height: 1.6;}
 
+    /* ─── CHAT UI INTEGRATION ─── */
+    .chat-container { background: white; padding: 1.8rem; border-radius: 2rem 2rem 0 0; border: 1px solid #f1f5f9; border-bottom: none; }
+    
+    /* Mengunci Form Streamlit ke Kotak Chat History di Atasnya */
+    [data-testid="stForm"] { 
+        background: white; 
+        border-radius: 0 0 2rem 2rem; 
+        border: 1px solid #f1f5f9; 
+        border-top: 1px dashed #e2e8f0; 
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); 
+        padding: 1.5rem 1.8rem; 
+        margin-top: -1.3rem; 
+        z-index: 10;
+        position: relative;
+    }
+            
     /* ─── ANIMASI GEMINI THINKING (LOADING PILL) ─── */
     @keyframes spin-slow { 100% { transform: rotate(360deg); } }
     @keyframes shine { to { background-position: 200% center; } }
@@ -335,16 +351,13 @@ if st.session_state.analysis_done:
         # Penutup border grafik bagian bawah
         st.markdown('<div style="background: #ffffff; height: 1.5rem; border-radius: 0 0 2rem 2rem; border: 1px solid #f1f5f9; border-top: none; margin-top: -1.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); margin-bottom: 1.5rem;"></div>', unsafe_allow_html=True)
         
-        # KOTAK TIPS KHUSUS (Dirangkai utuh dalam 1 Variabel)
+        # KOTAK TIPS KHUSUS (DIJADIKAN 1 BARIS HTML)
         if res and "tips" in res:
             tips_html = '<div class="content-box"><div class="box-title">💡 Tips Khusus untuk Anda</div>'
             for i, tip in enumerate(res["tips"]):
-                tips_html += f"""
-                <div class="tip-item">
-                    <div class="tip-number">{i+1}</div>
-                    <p class="tip-text"><span class="tip-highlight">{tip.get('highlight', '')}:</span> {tip.get('text', '')}</p>
-                </div>
-                """
+                highlight = tip.get("highlight", "")
+                text = tip.get("text", "")
+                tips_html += f'<div class="tip-item"><div class="tip-number">{i+1}</div><p class="tip-text"><span class="tip-highlight">{highlight}:</span> {text}</p></div>'
             tips_html += '</div>'
             st.markdown(tips_html, unsafe_allow_html=True)
 
@@ -400,7 +413,7 @@ if st.session_state.analysis_done:
 
 
     # KOTAK CHAT LANJUTAN (Dirangkai utuh dalam 1 Variabel)
-    chat_html = '<div style="margin-top: 3rem;" class="content-box"><div class="box-title">💬 Diskusi Lanjut dengan Agent</div>'
+    chat_html = '<div style="margin-top: 3rem;" class="chat-container"><div class="box-title">💬 Diskusi Lanjut dengan Agent</div>'
     for msg in st.session_state.conversation[1:]:
         if msg["role"] == "user":
             chat_html += f'<div class="chat-user-msg">{msg["content"]}</div>'
