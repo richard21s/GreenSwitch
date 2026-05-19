@@ -43,7 +43,7 @@ def run_agent(user_message: str, conversation_history: list, status_callback=Non
     MAX_ITERATIONS = 10
     for i in range(MAX_ITERATIONS):
         response = client.chat.completions.create(
-            model="openrouter/free",   # hemat biaya, performa bagus
+            model="nvidia/nemotron-3-super-120b-a12b:free",   # hemat biaya, performa bagus
             messages=messages,
             tools=TOOLS_DEFINITION,
             tool_choice="auto",
